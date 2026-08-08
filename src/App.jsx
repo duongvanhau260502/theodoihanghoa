@@ -319,6 +319,20 @@ function Workspace({ session, sitePassword, onLogout }) {
     );
   }
 
+  return (
+    <WorkspaceBody
+      data={data} setData={setData} error={error}
+      session={session} onLogout={onLogout}
+      tab={tab} setTab={setTab} toast={toast} showToast={showToast}
+      printReport={printReport} triggerPrint={triggerPrint}
+      canEdit={canEdit} isAdmin={isAdmin} role={role}
+    />
+  );
+}
+
+/* Tách riêng để mọi hook (useMemo...) luôn chạy đủ và đúng thứ tự —
+   component này chỉ được render sau khi data chắc chắn đã có. */
+function WorkspaceBody({ data, setData, error, session, onLogout, tab, setTab, toast, showToast, printReport, triggerPrint, canEdit, isAdmin, role }) {
   const statusByItem = useMemo(() => {
     const m = new Map();
     data.boqItems.forEach((it) => m.set(it.id, computeStatus(it, data.entries)));
