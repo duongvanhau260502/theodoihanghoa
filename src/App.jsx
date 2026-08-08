@@ -1192,16 +1192,86 @@ function CapNhatTab({ data, setData, showToast, canEdit }) {
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [rawText, setRawText] = useState("");
   const [parsedRows, setParsedRows] = useState([]);
+  const [fileName, setFileName] = useState("");
+  const [fileParsing, setFileParsing] = useState(false);
+  const fileInputRef = useRef(null);
 
-  const runMatch = () => {
-    const rows = parseRawLines(rawText);
-    if (!rows.length) { showToast("Không có dữ liệu để phân tích", "err"); return; }
+  const CN_HEADER_ALIASES = {
+    desc: ["mo ta", "mo ta boq", "ten vat tu", "san pham", "ten hang", "mo ta vat tu", "ten"],
+    model: ["model", "quy cach ma hieu", "quy cach", "ma hieu"],
+    qty: ["kl boq", "khoi luong", "so luong", "kl", "khoi luong boq", "sl"],
+  };
+
+  const runMatchOnRows = (rows) => {
     const matched = rows.map((r) => {
       const m = bestMatch(r.desc, r.model, data.boqItems);
       return { ...r, matchedId: m.item?.id || "", confidence: m.confidence };
     });
     setParsedRows(matched);
     showToast(`Đã phân tích ${matched.length} dòng — kiểm tra khớp bên dưới`);
+  };
+
+  const runMatch = () => {
+    const rows = parseRawLines(rawText);
+    if (!rows.length) { showToast("Không có dữ liệu để phân tích", "err"); return; }
+    runMatchOnRows(rows);
+  };
+
+  const downloadTemplate = async () => {
+    const XLSX = await import("xlsx");
+    const aoa = [
+      ["Mô tả", "Model", "Khối lượng"],
+      ["Ống nhựa PPR DN20 PN16", "Ống nhựa PPR DN20 PN16", 500],
+    ];
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    ws["!cols"] = [{ wch: 32 }, { wch: 32 }, { wch: 14 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "CapNhat");
+    XLSX.writeFile(wb, "Mau_Cap_Nhat_Chung_Tu.xlsx");
+  };
+
+  const handleFile = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setFileParsing(true);
+    setFileName(file.name);
+    try {
+      const XLSX = await import("xlsx");
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(buf, { type: "array" });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
+
+      const { headerRowIdx, score } = detectHeaderRow(aoa, CN_HEADER_ALIASES);
+      if (score < 1) {
+        showToast("Không tìm thấy dòng tiêu đề phù hợp — cần ít nhất cột Mô tả hoặc Khối lượng", "err");
+        setFileParsing(false); e.target.value = ""; return;
+      }
+      const colFieldMap = buildColFieldMap(aoa[headerRowIdx], CN_HEADER_ALIASES);
+      const rows = [];
+      for (let r = headerRowIdx + 1; r < aoa.length; r++) {
+        const row = aoa[r];
+        if (!row || row.every((c) => String(c ?? "").trim() === "")) continue;
+        const out = { desc: "", model: "", qty: 0 };
+        row.forEach((cell, idx) => {
+          const field = colFieldMap[idx];
+          if (field === "qty") out.qty = Number(String(cell).replace(/[^0-9.-]/g, "")) || 0;
+          else if (field) out[field] = String(cell ?? "").trim();
+        });
+        if (!out.model) out.model = out.desc;
+        if (out.desc && out.qty) rows.push(out);
+      }
+      if (!rows.length) {
+        showToast("Không đọc được dòng nào — kiểm tra cột Mô tả và Khối lượng", "err");
+      } else {
+        runMatchOnRows(rows);
+      }
+    } catch {
+      showToast("Không đọc được file — hãy chắc chắn đây là file .xlsx", "err");
+    } finally {
+      setFileParsing(false);
+      e.target.value = "";
+    }
   };
 
   const updateRowMatch = (idx, boqId) => {
@@ -1218,6 +1288,7 @@ function CapNhatTab({ data, setData, showToast, canEdit }) {
     setData({ ...data, pending: [...data.pending, ...pendingRows] });
     setParsedRows([]);
     setRawText("");
+    setFileName("");
     showToast(`Đã gửi ${pendingRows.length} dòng vào "Chờ xác nhận"`);
   };
 
@@ -1251,7 +1322,15 @@ function CapNhatTab({ data, setData, showToast, canEdit }) {
         <div className="font-semibold text-[13px] mb-1">Bước 2 — Dữ liệu chứng từ</div>
         <div className="text-[12px] text-[#8A8F98] mb-2">Dán dữ liệu thô (mỗi dòng: Mô tả [Tab] Model [Tab] Số lượng). App sẽ tự tách bảng và khớp mờ với BoQ.</div>
         <textarea className={`${inputCls} w-full h-28 font-mono text-[12px]`} value={rawText} onChange={(e) => setRawText(e.target.value)} placeholder={"Ống nhựa PPR DN20 PN16\\t\\t500\nỐng nhựa PPR DN25 PN16\\t\\t120"} disabled={!canEdit} />
-        <div className="mt-2"><Btn onClick={runMatch} disabled={!canEdit}><Search size={14} /> Phân tích & khớp với BoQ</Btn></div>
+        <div className="mt-2 flex flex-wrap gap-2">
+          <Btn onClick={runMatch} disabled={!canEdit}><Search size={14} /> Phân tích & khớp với BoQ</Btn>
+          <span className="text-[#8A8F98] text-[12px] self-center">hoặc</span>
+          <Btn variant="outline" onClick={downloadTemplate}><Download size={14} /> Tải file mẫu Excel</Btn>
+          <Btn variant="outline" onClick={() => fileInputRef.current?.click()} disabled={!canEdit || fileParsing}>
+            <Upload size={14} /> {fileParsing ? "Đang đọc file…" : fileName ? `Đã nạp: ${fileName}` : "Chọn file Excel để nạp"}
+          </Btn>
+          <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleFile} />
+        </div>
       </div>
 
       {parsedRows.length > 0 && (
