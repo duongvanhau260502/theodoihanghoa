@@ -401,7 +401,7 @@ function WorkspaceBody({ data, setData, error, session, onLogout, tab, setTab, t
         {tab === "choxacnhan" && <ChoXacNhanTab data={data} setData={setData} showToast={showToast} canEdit={canEdit} />}
         {tab === "ncc" && <NccTab data={data} setData={setData} statusByItem={statusByItem} showToast={showToast} canEdit={canEdit} onPrint={triggerPrint} projectName={data.meta.projectName} />}
         {tab === "ntp" && <NtpTab data={data} setData={setData} showToast={showToast} canEdit={canEdit} />}
-        {tab === "settings" && <SettingsTab data={data} setData={setData} showToast={showToast} isAdmin={isAdmin} />}
+        {tab === "settings" && <SettingsTab data={data} setData={setData} showToast={showToast} isAdmin={isAdmin} session={session} />}
       </div>
 
       {toast && (
@@ -426,15 +426,29 @@ function RoleIcon({ role }) {
    ============================================================ */
 function LoginGate() {
   const [session, setSession] = useState(null);
-  const [name, setName] = useState("");
-  const [role, setRole] = useState("editor");
 
-  const [pwRequired, setPwRequired] = useState(null); // null = đang kiểm tra, true/false = đã biết
-  const [sitePassword, setSitePassword] = useState(null); // mật khẩu ĐÃ xác thực thành công
+  // ---- cổng mật khẩu chung của cả trang (tuỳ chọn, độc lập với tài khoản) ----
+  const [pwRequired, setPwRequired] = useState(null);
+  const [sitePassword, setSitePassword] = useState(null);
   const [pwInput, setPwInput] = useState("");
   const [pwChecking, setPwChecking] = useState(false);
   const [pwError, setPwError] = useState("");
 
+  // ---- tài khoản đăng nhập thật ----
+  const [authChecked, setAuthChecked] = useState(false);
+  const [bootstrap, setBootstrap] = useState(false); // true = chưa có ai, cần tạo admin đầu tiên
+  const [loginUsername, setLoginUsername] = useState("");
+  const [loginPassword, setLoginPassword] = useState("");
+  const [loginConfirm, setLoginConfirm] = useState("");
+  const [loginName, setLoginName] = useState("");
+  const [loginBusy, setLoginBusy] = useState(false);
+  const [loginError, setLoginError] = useState("");
+
+  const persistSession = (token, user) => {
+    try { localStorage.setItem("vlink_session", JSON.stringify({ token, user })); } catch {}
+  };
+
+  // kiểm tra mật khẩu trang (nếu có)
   useEffect(() => {
     (async () => {
       try {
@@ -442,14 +456,44 @@ function LoginGate() {
         const json = await res.json();
         setPwRequired(!!json.required);
       } catch {
-        setPwRequired(false); // không kết nối được server -> không chặn, coi như chưa bật mật khẩu
+        setPwRequired(false);
       }
     })();
   }, []);
 
-  if (session) return <Workspace session={session} sitePassword={sitePassword} onLogout={() => setSession(null)} />;
+  // sau khi qua cổng mật khẩu trang (hoặc không cần) -> khôi phục phiên đăng nhập cũ / kiểm tra bootstrap
+  useEffect(() => {
+    if (pwRequired === null) return; // chưa xác định xong bước trước
+    if (pwRequired && !sitePassword) return; // còn đang chờ nhập mật khẩu trang
 
-  const verifyPassword = async () => {
+    try {
+      const raw = localStorage.getItem("vlink_session");
+      if (raw) {
+        const saved = JSON.parse(raw);
+        if (saved?.token && saved?.user) {
+          setSession({ ...saved.user, token: saved.token });
+          setAuthChecked(true);
+          return;
+        }
+      }
+    } catch {}
+
+    (async () => {
+      try {
+        const res = await fetch("/api/users");
+        const json = await res.json();
+        setBootstrap(!!json.bootstrap);
+      } catch {
+        setBootstrap(false);
+      } finally {
+        setAuthChecked(true);
+      }
+    })();
+  }, [pwRequired, sitePassword]);
+
+  if (session) return <Workspace session={session} sitePassword={sitePassword} onLogout={() => { try { localStorage.removeItem("vlink_session"); } catch {} setSession(null); setAuthChecked(false); }} />;
+
+  const verifySitePassword = async () => {
     if (!pwInput) return;
     setPwChecking(true);
     setPwError("");
@@ -460,11 +504,8 @@ function LoginGate() {
         body: JSON.stringify({ password: pwInput }),
       });
       const json = await res.json();
-      if (json.ok) {
-        setSitePassword(pwInput);
-      } else {
-        setPwError("Sai mật khẩu, thử lại.");
-      }
+      if (json.ok) setSitePassword(pwInput);
+      else setPwError("Sai mật khẩu, thử lại.");
     } catch {
       setPwError("Không kết nối được máy chủ để kiểm tra mật khẩu.");
     } finally {
@@ -472,8 +513,90 @@ function LoginGate() {
     }
   };
 
+  const doBootstrap = async () => {
+    if (!loginUsername.trim() || !loginPassword || !loginName.trim()) { setLoginError("Điền đầy đủ thông tin."); return; }
+    if (loginPassword.length < 6) { setLoginError("Mật khẩu cần ít nhất 6 ký tự."); return; }
+    if (loginPassword !== loginConfirm) { setLoginError("Mật khẩu nhập lại không khớp."); return; }
+    setLoginBusy(true); setLoginError("");
+    try {
+      const res = await fetch("/api/users", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ username: loginUsername.trim(), password: loginPassword, name: loginName.trim() }),
+      });
+      const json = await res.json();
+      if (json.ok) {
+        // đăng nhập luôn sau khi tạo tài khoản đầu tiên
+        const loginRes = await fetch("/api/login", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ username: loginUsername.trim(), password: loginPassword }),
+        });
+        const loginJson = await loginRes.json();
+        if (loginJson.ok) {
+          persistSession(loginJson.token, loginJson.user);
+          setSession({ ...loginJson.user, token: loginJson.token });
+        } else {
+          setLoginError("Tạo tài khoản thành công nhưng đăng nhập thất bại, thử đăng nhập lại.");
+          setBootstrap(false);
+        }
+      } else {
+        setLoginError(json.error || "Không tạo được tài khoản.");
+      }
+    } catch {
+      setLoginError("Không kết nối được máy chủ.");
+    } finally {
+      setLoginBusy(false);
+    }
+  };
+
+  const doLogin = async () => {
+    if (!loginUsername.trim() || !loginPassword) { setLoginError("Nhập tên đăng nhập và mật khẩu."); return; }
+    setLoginBusy(true); setLoginError("");
+    try {
+      const res = await fetch("/api/login", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ username: loginUsername.trim(), password: loginPassword }),
+      });
+      const json = await res.json();
+      if (json.ok) {
+        persistSession(json.token, json.user);
+        setSession({ ...json.user, token: json.token });
+      } else {
+        setLoginError(json.error || "Sai tên đăng nhập hoặc mật khẩu.");
+      }
+    } catch {
+      setLoginError("Không kết nối được máy chủ.");
+    } finally {
+      setLoginBusy(false);
+    }
+  };
+
   // BƯỚC 1 — cổng mật khẩu chung của cả trang (chỉ hiện nếu server đã bật SITE_PASSWORD)
-  if (pwRequired === null) {
+  if (pwRequired === null || (pwRequired && !sitePassword && !authChecked) || !authChecked) {
+    if (pwRequired && !sitePassword) {
+      return (
+        <div className="w-full h-full min-h-[600px] bg-[#F5F6F8] flex items-center justify-center p-6" style={{ fontFamily: "Inter, ui-sans-serif, system-ui" }}>
+          <div className="bg-white rounded-2xl border border-[#E4E6EA] shadow-sm w-full max-w-sm p-6">
+            <div className="flex items-center gap-2 mb-1">
+              <div className="w-9 h-9 rounded-lg bg-[#2856C7] text-white flex items-center justify-center font-black text-sm">VL</div>
+              <div className="font-bold text-[15px]">VLINK</div>
+            </div>
+            <div className="text-[12.5px] text-[#8A8F98] mb-5">Trang này yêu cầu mật khẩu truy cập.</div>
+            <div className="flex flex-col gap-3">
+              <Field label="Mật khẩu truy cập">
+                <input type="password" autoFocus className={inputCls} value={pwInput}
+                  onChange={(e) => { setPwInput(e.target.value); setPwError(""); }}
+                  onKeyDown={(e) => e.key === "Enter" && verifySitePassword()} />
+              </Field>
+              {pwError && <div className="text-[12px] text-[#C0392B] flex items-center gap-1.5"><Lock size={12} /> {pwError}</div>}
+              <Btn onClick={verifySitePassword} disabled={!pwInput || pwChecking}>{pwChecking ? "Đang kiểm tra…" : "Tiếp tục"}</Btn>
+            </div>
+          </div>
+        </div>
+      );
+    }
     return (
       <div className="w-full h-full min-h-[600px] bg-[#F5F6F8] flex items-center justify-center p-6 text-[#8A8F98] text-[13px] gap-2" style={{ fontFamily: "Inter, ui-sans-serif, system-ui" }}>
         <RefreshCw size={16} className="animate-spin" /> Đang tải…
@@ -481,7 +604,8 @@ function LoginGate() {
     );
   }
 
-  if (pwRequired && !sitePassword) {
+  // BƯỚC 2a — chưa có ai dùng hệ thống -> tạo tài khoản Quản trị viên đầu tiên
+  if (bootstrap) {
     return (
       <div className="w-full h-full min-h-[600px] bg-[#F5F6F8] flex items-center justify-center p-6" style={{ fontFamily: "Inter, ui-sans-serif, system-ui" }}>
         <div className="bg-white rounded-2xl border border-[#E4E6EA] shadow-sm w-full max-w-sm p-6">
@@ -489,22 +613,23 @@ function LoginGate() {
             <div className="w-9 h-9 rounded-lg bg-[#2856C7] text-white flex items-center justify-center font-black text-sm">VL</div>
             <div className="font-bold text-[15px]">VLINK</div>
           </div>
-          <div className="text-[12.5px] text-[#8A8F98] mb-5">Trang này yêu cầu mật khẩu truy cập.</div>
+          <div className="text-[12.5px] text-[#8A8F98] mb-1">Chưa có tài khoản nào trên hệ thống.</div>
+          <div className="text-[12.5px] text-[#2856C7] font-medium mb-5 flex items-center gap-1.5"><ShieldCheck size={14} /> Tạo tài khoản Quản trị viên đầu tiên</div>
+
           <div className="flex flex-col gap-3">
-            <Field label="Mật khẩu truy cập">
-              <input type="password" autoFocus className={inputCls} value={pwInput}
-                onChange={(e) => { setPwInput(e.target.value); setPwError(""); }}
-                onKeyDown={(e) => e.key === "Enter" && verifyPassword()} />
-            </Field>
-            {pwError && <div className="text-[12px] text-[#C0392B] flex items-center gap-1.5"><Lock size={12} /> {pwError}</div>}
-            <Btn onClick={verifyPassword} disabled={!pwInput || pwChecking}>{pwChecking ? "Đang kiểm tra…" : "Tiếp tục"}</Btn>
+            <Field label="Tên hiển thị"><input className={inputCls} value={loginName} onChange={(e) => setLoginName(e.target.value)} placeholder="VD: Nguyễn Văn A" /></Field>
+            <Field label="Tên đăng nhập"><input className={inputCls} value={loginUsername} onChange={(e) => setLoginUsername(e.target.value)} placeholder="VD: vanhau" /></Field>
+            <Field label="Mật khẩu"><input type="password" className={inputCls} value={loginPassword} onChange={(e) => setLoginPassword(e.target.value)} placeholder="Ít nhất 6 ký tự" /></Field>
+            <Field label="Nhập lại mật khẩu"><input type="password" className={inputCls} value={loginConfirm} onChange={(e) => setLoginConfirm(e.target.value)} onKeyDown={(e) => e.key === "Enter" && doBootstrap()} /></Field>
+            {loginError && <div className="text-[12px] text-[#C0392B] flex items-center gap-1.5"><Lock size={12} /> {loginError}</div>}
+            <Btn onClick={doBootstrap} disabled={loginBusy}>{loginBusy ? "Đang tạo…" : "Tạo tài khoản Quản trị viên"}</Btn>
           </div>
         </div>
       </div>
     );
   }
 
-  // BƯỚC 2 — chọn tên hiển thị + vai trò
+  // BƯỚC 2b — đăng nhập bình thường
   return (
     <div className="w-full h-full min-h-[600px] bg-[#F5F6F8] flex items-center justify-center p-6" style={{ fontFamily: "Inter, ui-sans-serif, system-ui" }}>
       <div className="bg-white rounded-2xl border border-[#E4E6EA] shadow-sm w-full max-w-sm p-6">
@@ -512,40 +637,28 @@ function LoginGate() {
           <div className="w-9 h-9 rounded-lg bg-[#2856C7] text-white flex items-center justify-center font-black text-sm">VL</div>
           <div className="font-bold text-[15px]">VLINK</div>
         </div>
-        <div className="text-[12.5px] text-[#8A8F98] mb-5">Quản lý Vật tư Thi công — đăng nhập theo vai trò</div>
+        <div className="text-[12.5px] text-[#8A8F98] mb-5">Quản lý Vật tư Thi công — đăng nhập</div>
 
         <div className="flex flex-col gap-3">
-          <Field label="Tên hiển thị">
-            <input className={inputCls} value={name} onChange={(e) => setName(e.target.value)} placeholder="VD: Nguyễn Văn A" />
+          <Field label="Tên đăng nhập">
+            <input autoFocus className={inputCls} value={loginUsername} onChange={(e) => { setLoginUsername(e.target.value); setLoginError(""); }} />
           </Field>
-          <Field label="Vai trò">
-            <div className="flex flex-col gap-2">
-              {Object.entries(ROLES).map(([key, r]) => {
-                const Icon = r.icon;
-                const active = role === key;
-                return (
-                  <button key={key} onClick={() => setRole(key)}
-                    className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-left text-[13px] transition-colors ${active ? "border-[#2856C7] bg-[#EAF1FC]" : "border-[#DADDE2] hover:bg-[#F8F9FB]"}`}>
-                    <Icon size={15} style={{ color: r.color }} />
-                    <span className="font-medium">{r.label}</span>
-                  </button>
-                );
-              })}
-            </div>
+          <Field label="Mật khẩu">
+            <input type="password" className={inputCls} value={loginPassword}
+              onChange={(e) => { setLoginPassword(e.target.value); setLoginError(""); }}
+              onKeyDown={(e) => e.key === "Enter" && doLogin()} />
           </Field>
+          {loginError && <div className="text-[12px] text-[#C0392B] flex items-center gap-1.5"><Lock size={12} /> {loginError}</div>}
+          <Btn onClick={doLogin} disabled={loginBusy}>{loginBusy ? "Đang đăng nhập…" : "Đăng nhập"}</Btn>
           <div className="text-[11px] text-[#8A8F98] flex items-start gap-1.5 mt-1">
             <Lock size={12} className="mt-0.5 shrink-0" />
-            Quản trị viên: toàn quyền · Biên tập: thêm/sửa/duyệt dữ liệu · Chỉ xem: không chỉnh sửa được.
+            Chưa có tài khoản? Nhờ Quản trị viên tạo cho bạn trong mục "Dữ liệu & Cài đặt".
           </div>
-          <Btn onClick={() => name.trim() && setSession({ name: name.trim(), role })} disabled={!name.trim()}>
-            Vào hệ thống
-          </Btn>
         </div>
       </div>
     </div>
   );
 }
-
 /* ============================================================
    DASHBOARD
    ============================================================ */
@@ -1323,7 +1436,7 @@ function NtpTab({ data, setData, showToast, canEdit }) {
 /* ============================================================
    SETTINGS
    ============================================================ */
-function SettingsTab({ data, setData, showToast, isAdmin }) {
+function SettingsTab({ data, setData, showToast, isAdmin, session }) {
   const [projectName, setProjectName] = useState(data.meta.projectName);
 
   const save = () => {
@@ -1384,10 +1497,123 @@ function SettingsTab({ data, setData, showToast, isAdmin }) {
           })}
         </div>
       </div>
+
+      {isAdmin && <UserManagement session={session} showToast={showToast} />}
     </div>
   );
 }
 
 export default function App() {
   return <LoginGate />;
+}
+
+/* ============================================================
+   QUẢN LÝ NGƯỜI DÙNG (chỉ Quản trị viên)
+   ============================================================ */
+function UserManagement({ session, showToast }) {
+  const [users, setUsers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [name, setName] = useState("");
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [role, setRole] = useState("editor");
+  const [busy, setBusy] = useState(false);
+
+  const authHeaders = { "content-type": "application/json", authorization: `Bearer ${session.token}` };
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/users", { headers: authHeaders });
+      const json = await res.json();
+      setUsers(json.users || []);
+    } catch {
+      showToast("Không tải được danh sách người dùng", "err");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { load(); }, []); // eslint-disable-line
+
+  const addUser = async () => {
+    if (!name.trim() || !username.trim() || !password) { showToast("Điền đủ tên, tên đăng nhập và mật khẩu", "err"); return; }
+    if (password.length < 6) { showToast("Mật khẩu cần ít nhất 6 ký tự", "err"); return; }
+    setBusy(true);
+    try {
+      const res = await fetch("/api/users", {
+        method: "POST",
+        headers: authHeaders,
+        body: JSON.stringify({ name: name.trim(), username: username.trim(), password, role }),
+      });
+      const json = await res.json();
+      if (json.ok) {
+        showToast("Đã tạo tài khoản");
+        setName(""); setUsername(""); setPassword(""); setRole("editor");
+        load();
+      } else {
+        showToast(json.error || "Không tạo được tài khoản", "err");
+      }
+    } catch {
+      showToast("Không kết nối được máy chủ", "err");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const removeUser = async (id) => {
+    try {
+      const res = await fetch(`/api/users?id=${encodeURIComponent(id)}`, { method: "DELETE", headers: authHeaders });
+      const json = await res.json();
+      if (json.ok) { showToast("Đã xoá tài khoản"); load(); }
+      else showToast(json.error || "Không xoá được", "err");
+    } catch {
+      showToast("Không kết nối được máy chủ", "err");
+    }
+  };
+
+  return (
+    <div className="bg-white rounded-xl border border-[#E4E6EA] p-4">
+      <div className="font-semibold text-[13px] mb-1">Quản lý người dùng</div>
+      <div className="text-[12px] text-[#8A8F98] mb-3">Tạo tài khoản đăng nhập riêng cho từng người, gán sẵn vai trò.</div>
+
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
+        <Field label="Tên hiển thị"><input className={inputCls} value={name} onChange={(e) => setName(e.target.value)} /></Field>
+        <Field label="Tên đăng nhập"><input className={inputCls} value={username} onChange={(e) => setUsername(e.target.value)} /></Field>
+        <Field label="Mật khẩu"><input type="password" className={inputCls} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Ít nhất 6 ký tự" /></Field>
+        <Field label="Vai trò">
+          <select className={inputCls} value={role} onChange={(e) => setRole(e.target.value)}>
+            {Object.entries(ROLES).map(([key, r]) => <option key={key} value={key}>{r.label}</option>)}
+          </select>
+        </Field>
+      </div>
+      <Btn onClick={addUser} disabled={busy}><Plus size={14} /> Tạo tài khoản</Btn>
+
+      <table className="w-full text-[12.5px] mt-4">
+        <thead className="text-[#5B6169]">
+          <tr>
+            <th className="text-left px-2 py-1.5 font-medium">Tên</th>
+            <th className="text-left px-2 py-1.5 font-medium">Tên đăng nhập</th>
+            <th className="text-left px-2 py-1.5 font-medium">Vai trò</th>
+            <th className="px-2 py-1.5"></th>
+          </tr>
+        </thead>
+        <tbody>
+          {users.map((u) => (
+            <tr key={u.id} className="border-t border-[#F1F2F4]">
+              <td className="px-2 py-1.5">{u.name}</td>
+              <td className="px-2 py-1.5 text-[#5B6169]">{u.username}</td>
+              <td className="px-2 py-1.5"><Badge level="blue">{ROLES[u.role]?.label || u.role}</Badge></td>
+              <td className="px-2 py-1.5 text-right">
+                {u.id !== session.id && (
+                  <button onClick={() => removeUser(u.id)} className="text-[#C0392B] hover:bg-[#FDECEC] p-1 rounded"><Trash2 size={13} /></button>
+                )}
+              </td>
+            </tr>
+          ))}
+          {!loading && users.length === 0 && <tr><td colSpan={4} className="text-center py-4 text-[#8A8F98]">Chưa có tài khoản nào khác</td></tr>}
+        </tbody>
+      </table>
+    </div>
+  );
 }
