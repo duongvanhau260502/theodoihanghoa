@@ -3,7 +3,8 @@ import {
   LayoutDashboard, ClipboardList, Truck, Inbox, CheckSquare, Boxes,
   Users, Building2, Settings, Plus, Trash2, Upload, Download,
   AlertTriangle, CheckCircle2, Clock, X, ChevronDown, Search, RefreshCw,
-  Printer, LogOut, ShieldCheck, Receipt, Lock, Eye, PencilLine
+  Printer, LogOut, ShieldCheck, Receipt, Lock, Eye, PencilLine,
+  Percent, PackageSearch, TrendingUp, Bell, ChevronRight
 } from "lucide-react";
 
 /* ---------- roles & permissions ---------- */
@@ -11,6 +12,17 @@ const ROLES = {
   admin: { label: "Quản trị viên", icon: ShieldCheck, color: "#2856C7" },
   editor: { label: "Biên tập", icon: PencilLine, color: "#1E8449" },
   viewer: { label: "Chỉ xem", icon: Eye, color: "#8A8F98" },
+};
+
+/* ---------- bảng màu giao diện (sidebar tối + cam) ---------- */
+const THEME = {
+  sidebarBg: "#12182B",
+  sidebarBgAlt: "#1A2138",
+  sidebarText: "#B7BFD6",
+  sidebarTextMuted: "#6B7280",
+  sidebarActive: "#1F2740",
+  accent: "#F97316",
+  accentSoft: "#FEEBDD",
 };
 
 /* ============================================================
@@ -21,16 +33,25 @@ const ROLES = {
    không nhập tay.
    ============================================================ */
 
-const TABS = [
-  { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { id: "boq", label: "BoQ & Longlead", icon: ClipboardList },
-  { id: "tonghop", label: "Tổng hợp", icon: Boxes },
-  { id: "capnhat", label: "Cập nhật", icon: Upload },
-  { id: "choxacnhan", label: "Chờ xác nhận", icon: CheckSquare },
-  { id: "ncc", label: "Nhà cung cấp", icon: Truck },
-  { id: "ntp", label: "Nhà thầu phụ", icon: Users },
-  { id: "settings", label: "Dữ liệu & Cài đặt", icon: Settings },
+const NAV_GROUPS = [
+  { label: null, items: [{ id: "dashboard", label: "Dashboard", icon: LayoutDashboard }] },
+  { label: "Dự án", items: [
+    { id: "boq", label: "BoQ & Longlead", icon: ClipboardList },
+    { id: "tonghop", label: "Tổng hợp", icon: Boxes },
+  ]},
+  { label: "Nghiệp vụ", items: [
+    { id: "capnhat", label: "Cập nhật", icon: Upload },
+    { id: "choxacnhan", label: "Chờ xác nhận", icon: CheckSquare },
+  ]},
+  { label: "Đối tác", items: [
+    { id: "ncc", label: "Nhà cung cấp", icon: Truck },
+    { id: "ntp", label: "Nhà thầu phụ", icon: Users },
+  ]},
+  { label: "Hệ thống", items: [
+    { id: "settings", label: "Dữ liệu & Cài đặt", icon: Settings },
+  ]},
 ];
+const TABS = NAV_GROUPS.flatMap((g) => g.items);
 
 const ENTRY_TYPES = {
   shop: { label: "Khối lượng Shop", mode: "sum", color: "#7C6FDB" },
@@ -246,13 +267,23 @@ const Badge = ({ level, children }) => {
   );
 };
 
-const Card = ({ title, value, sub, accent }) => (
-  <div className="bg-white rounded-xl border border-[#E4E6EA] p-4 flex flex-col gap-1 min-w-[150px]">
-    <div className="text-[11px] uppercase tracking-wide text-[#8A8F98] font-semibold">{title}</div>
-    <div className="text-2xl font-bold" style={{ color: accent || "#1D2129" }}>{value}</div>
-    {sub && <div className="text-[12px] text-[#8A8F98]">{sub}</div>}
-  </div>
-);
+const Card = ({ title, value, sub, accent, icon, iconBg }) => {
+  const Icon = icon;
+  return (
+    <div className="bg-white rounded-xl border border-[#E4E6EA] p-4 flex flex-col gap-2 min-w-[150px] flex-1">
+      <div className="flex items-center justify-between">
+        <div className="text-[11px] uppercase tracking-wide text-[#8A8F98] font-semibold">{title}</div>
+        {Icon && (
+          <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: iconBg || THEME.accentSoft }}>
+            <Icon size={16} style={{ color: accent || THEME.accent }} />
+          </div>
+        )}
+      </div>
+      <div className="text-2xl font-bold" style={{ color: "#1D2129" }}>{value}</div>
+      {sub && <div className="text-[12px] text-[#8A8F98]">{sub}</div>}
+    </div>
+  );
+};
 
 const Btn = ({ children, onClick, variant = "primary", size = "md", disabled, title }) => {
   const base = "inline-flex items-center gap-1.5 rounded-lg font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed";
@@ -378,59 +409,89 @@ function WorkspaceBody({ data, setData, error, session, onLogout, tab, setTab, t
   }, [data.boqItems, statusByItem]);
 
   return (
-    <div className="w-full h-full min-h-[600px] bg-[#F5F6F8] text-[#1D2129] flex flex-col font-sans" style={{ fontFamily: "Inter, ui-sans-serif, system-ui" }}>
-      {/* Header */}
-      <div className="bg-white border-b border-[#E4E6EA] px-5 py-3 flex items-center justify-between flex-wrap gap-2">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-lg bg-[#2856C7] text-white flex items-center justify-center font-black text-sm">VL</div>
-          <div>
-            <div className="font-bold text-[15px] leading-tight">VLINK — Quản lý Vật tư Thi công</div>
-            <div className="text-[11px] text-[#8A8F98] leading-tight">{data.meta.projectName}</div>
+    <div className="w-full h-full min-h-[600px] flex font-sans" style={{ fontFamily: "Inter, ui-sans-serif, system-ui", background: THEME.sidebarBg }}>
+      {/* Sidebar tối */}
+      <div className="w-[232px] shrink-0 flex flex-col" style={{ background: THEME.sidebarBg }}>
+        <div className="flex items-center gap-2.5 px-5 py-5">
+          <div className="w-9 h-9 rounded-lg flex items-center justify-center font-black text-sm text-white shrink-0" style={{ background: THEME.accent }}>VL</div>
+          <div className="min-w-0">
+            <div className="font-bold text-[14px] text-white leading-tight truncate">VLINK</div>
+            <div className="text-[10.5px] leading-tight truncate" style={{ color: THEME.sidebarTextMuted }}>Quản lý Vật tư Thi công</div>
           </div>
         </div>
-        <div className="flex items-center gap-3">
-          {error && <span className="text-[11px] text-[#C0392B]">{error}</span>}
-          <Badge level="blue">Dữ liệu dùng chung (server)</Badge>
-          <div className="flex items-center gap-1.5 pl-3 border-l border-[#E4E6EA]">
-            <RoleIcon role={role} />
-            <div className="leading-tight">
-              <div className="text-[12.5px] font-semibold">{session.name}</div>
-              <div className="text-[10.5px] text-[#8A8F98]">{ROLES[role].label}</div>
-            </div>
-            <button title="Đăng xuất" onClick={onLogout} className="ml-2 text-[#8A8F98] hover:text-[#C0392B] hover:bg-[#FDECEC] p-1.5 rounded-lg">
-              <LogOut size={14} />
-            </button>
-          </div>
-        </div>
-      </div>
 
-      {/* Tabs */}
-      <div className="bg-white border-b border-[#E4E6EA] px-5 flex gap-1 overflow-x-auto">
-        {TABS.map((t) => {
-          const Icon = t.icon;
-          const active = tab === t.id;
-          return (
-            <button key={t.id} onClick={() => setTab(t.id)}
-              className={`flex items-center gap-1.5 px-3 py-2.5 text-[13px] font-medium border-b-2 whitespace-nowrap transition-colors ${active ? "border-[#2856C7] text-[#2856C7]" : "border-transparent text-[#5B6169] hover:text-[#1D2129]"}`}>
-              <Icon size={15} /> {t.label}
-              {t.id === "choxacnhan" && data.pending.length > 0 && (
-                <span className="ml-1 bg-[#C0392B] text-white text-[10px] rounded-full px-1.5 py-0.5">{data.pending.length}</span>
+        <div className="flex-1 overflow-y-auto px-3 pb-4">
+          {NAV_GROUPS.map((group, gi) => (
+            <div key={gi} className="mb-1">
+              {group.label && (
+                <div className="px-2.5 pt-4 pb-1.5 text-[10.5px] font-bold uppercase tracking-wide" style={{ color: THEME.sidebarTextMuted }}>
+                  {group.label}
+                </div>
               )}
-            </button>
-          );
-        })}
+              {group.items.map((t) => {
+                const Icon = t.icon;
+                const active = tab === t.id;
+                return (
+                  <button key={t.id} onClick={() => setTab(t.id)}
+                    className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-[13px] font-medium mb-0.5 transition-colors relative"
+                    style={{ background: active ? THEME.sidebarActive : "transparent", color: active ? "#fff" : THEME.sidebarText }}>
+                    {active && <span className="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-full" style={{ background: THEME.accent }} />}
+                    <Icon size={15} style={{ color: active ? THEME.accent : THEME.sidebarText }} />
+                    <span className="truncate">{t.label}</span>
+                    {t.id === "choxacnhan" && data.pending.length > 0 && (
+                      <span className="ml-auto bg-[#C0392B] text-white text-[10px] rounded-full px-1.5 py-0.5">{data.pending.length}</span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          ))}
+        </div>
       </div>
 
-      {/* Body */}
-      <div className="flex-1 overflow-auto p-5">
-        {tab === "dashboard" && <Dashboard data={data} statusByItem={statusByItem} allAlerts={allAlerts} />}
-        {tab === "boq" && <BoqTab data={data} setData={setData} showToast={showToast} canEdit={canEdit} />}
-        {tab === "tonghop" && <TongHopTab data={data} statusByItem={statusByItem} onPrint={triggerPrint} projectName={data.meta.projectName} />}
-        {tab === "capnhat" && <CapNhatTab data={data} setData={setData} showToast={showToast} canEdit={canEdit} />}
+      {/* Cột nội dung sáng */}
+      <div className="flex-1 flex flex-col min-w-0 bg-[#F3F4F6] text-[#1D2129]">
+        {/* Header */}
+        <div className="bg-white border-b border-[#E4E6EA] px-5 py-3 flex items-center justify-between flex-wrap gap-2">
+          <div>
+            <div className="font-bold text-[15px] leading-tight">{data.meta.projectName}</div>
+            <div className="text-[11px] text-[#8A8F98] leading-tight">Dự án đang xem</div>
+          </div>
+          <div className="flex items-center gap-3">
+            {error && <span className="text-[11px] text-[#C0392B]">{error}</span>}
+            <Badge level="blue">Dữ liệu dùng chung (server)</Badge>
+            <div className="flex items-center gap-1.5 pl-3 border-l border-[#E4E6EA]">
+              <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-[12px] font-bold" style={{ background: THEME.accent }}>
+                {(session.name || "?").slice(0, 1).toUpperCase()}
+              </div>
+              <div className="leading-tight">
+                <div className="text-[12.5px] font-semibold">{session.name}</div>
+                <div className="text-[10.5px] text-[#8A8F98] flex items-center gap-1"><RoleIcon role={role} />{ROLES[role].label}</div>
+              </div>
+              <button title="Đăng xuất" onClick={onLogout} className="ml-2 text-[#8A8F98] hover:text-[#C0392B] hover:bg-[#FDECEC] p-1.5 rounded-lg">
+                <LogOut size={14} />
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Breadcrumb nhỏ theo tab đang chọn */}
+        <div className="px-5 pt-3 flex items-center gap-1.5 text-[12px] text-[#8A8F98]">
+          <span>VLINK</span><ChevronRight size={12} />
+          <span className="text-[#1D2129] font-medium">{TABS.find((t) => t.id === tab)?.label}</span>
+        </div>
+
+        {/* Body */}
+        <div className="flex-1 overflow-auto p-5">
+          {tab === "dashboard" && <Dashboard data={data} statusByItem={statusByItem} allAlerts={allAlerts} />}
+          {tab === "boq" && <BoqTab data={data} setData={setData} showToast={showToast} canEdit={canEdit} />}
+          {tab === "tonghop" && <TongHopTab data={data} statusByItem={statusByItem} onPrint={triggerPrint} projectName={data.meta.projectName} />}
+          {tab === "capnhat" && <CapNhatTab data={data} setData={setData} showToast={showToast} canEdit={canEdit} />}
         {tab === "choxacnhan" && <ChoXacNhanTab data={data} setData={setData} showToast={showToast} canEdit={canEdit} />}
         {tab === "ncc" && <NccTab data={data} setData={setData} statusByItem={statusByItem} showToast={showToast} canEdit={canEdit} onPrint={triggerPrint} projectName={data.meta.projectName} />}
         {tab === "ntp" && <NtpTab data={data} setData={setData} showToast={showToast} canEdit={canEdit} projectName={data.meta.projectName} />}
         {tab === "settings" && <SettingsTab data={data} setData={setData} showToast={showToast} isAdmin={isAdmin} session={session} />}
+        </div>
       </div>
 
       {toast && (
@@ -702,11 +763,11 @@ function Dashboard({ data, statusByItem, allAlerts }) {
   return (
     <div className="flex flex-col gap-5">
       <div className="flex flex-wrap gap-3">
-        <Card title="Đầu mục BoQ" value={n} />
-        <Card title="% Đặt hàng TB" value={`${pctOrder.toFixed(0)}%`} accent="#2856C7" />
-        <Card title="% Nhận hàng TB" value={`${pctReceived.toFixed(0)}%`} accent="#1E8449" />
-        <Card title="Cảnh báo đang mở" value={openAlerts.length} accent={openAlerts.length ? "#C0392B" : "#1E8449"} />
-        <Card title="Tồn kho (tổng ĐVT gộp)" value={inventoryValue.toLocaleString("vi-VN")} />
+        <Card title="Đầu mục BoQ" value={n} icon={Boxes} accent="#F97316" iconBg="#FEEBDD" />
+        <Card title="% Đặt hàng TB" value={`${pctOrder.toFixed(0)}%`} icon={Percent} accent="#2856C7" iconBg="#EAF1FC" />
+        <Card title="% Nhận hàng TB" value={`${pctReceived.toFixed(0)}%`} icon={TrendingUp} accent="#1E8449" iconBg="#E8F6EE" />
+        <Card title="Cảnh báo đang mở" value={openAlerts.length} icon={AlertTriangle} accent={openAlerts.length ? "#C0392B" : "#1E8449"} iconBg={openAlerts.length ? "#FDECEC" : "#E8F6EE"} />
+        <Card title="Tồn kho (tổng ĐVT gộp)" value={inventoryValue.toLocaleString("vi-VN")} icon={PackageSearch} accent="#7C6FDB" iconBg="#EFEDFC" />
       </div>
 
       <div className="bg-white rounded-xl border border-[#E4E6EA]">
