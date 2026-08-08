@@ -415,10 +415,23 @@ function LoginGate() {
   const [name, setName] = useState("");
   const [role, setRole] = useState("editor");
 
+  const [pwRequired, setPwRequired] = useState(null); // null = đang kiểm tra, true/false = đã biết
   const [sitePassword, setSitePassword] = useState(null); // mật khẩu ĐÃ xác thực thành công
   const [pwInput, setPwInput] = useState("");
   const [pwChecking, setPwChecking] = useState(false);
   const [pwError, setPwError] = useState("");
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch("/api/auth");
+        const json = await res.json();
+        setPwRequired(!!json.required);
+      } catch {
+        setPwRequired(false); // không kết nối được server -> không chặn, coi như chưa bật mật khẩu
+      }
+    })();
+  }, []);
 
   if (session) return <Workspace session={session} sitePassword={sitePassword} onLogout={() => setSession(null)} />;
 
@@ -445,8 +458,16 @@ function LoginGate() {
     }
   };
 
-  // BƯỚC 1 — cổng mật khẩu chung của cả trang
-  if (!sitePassword) {
+  // BƯỚC 1 — cổng mật khẩu chung của cả trang (chỉ hiện nếu server đã bật SITE_PASSWORD)
+  if (pwRequired === null) {
+    return (
+      <div className="w-full h-full min-h-[600px] bg-[#F5F6F8] flex items-center justify-center p-6 text-[#8A8F98] text-[13px] gap-2" style={{ fontFamily: "Inter, ui-sans-serif, system-ui" }}>
+        <RefreshCw size={16} className="animate-spin" /> Đang tải…
+      </div>
+    );
+  }
+
+  if (pwRequired && !sitePassword) {
     return (
       <div className="w-full h-full min-h-[600px] bg-[#F5F6F8] flex items-center justify-center p-6" style={{ fontFamily: "Inter, ui-sans-serif, system-ui" }}>
         <div className="bg-white rounded-2xl border border-[#E4E6EA] shadow-sm w-full max-w-sm p-6">
