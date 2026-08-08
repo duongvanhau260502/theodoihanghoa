@@ -429,7 +429,7 @@ function WorkspaceBody({ data, setData, error, session, onLogout, tab, setTab, t
         {tab === "capnhat" && <CapNhatTab data={data} setData={setData} showToast={showToast} canEdit={canEdit} />}
         {tab === "choxacnhan" && <ChoXacNhanTab data={data} setData={setData} showToast={showToast} canEdit={canEdit} />}
         {tab === "ncc" && <NccTab data={data} setData={setData} statusByItem={statusByItem} showToast={showToast} canEdit={canEdit} onPrint={triggerPrint} projectName={data.meta.projectName} />}
-        {tab === "ntp" && <NtpTab data={data} setData={setData} showToast={showToast} canEdit={canEdit} />}
+        {tab === "ntp" && <NtpTab data={data} setData={setData} showToast={showToast} canEdit={canEdit} projectName={data.meta.projectName} />}
         {tab === "settings" && <SettingsTab data={data} setData={setData} showToast={showToast} isAdmin={isAdmin} session={session} />}
       </div>
 
@@ -1795,18 +1795,47 @@ function InvoiceReconcile({ data, setData, statusByItem, showToast, canEdit, onP
 /* ============================================================
    NHÀ THẦU PHỤ
    ============================================================ */
-function NtpTab({ data, setData, showToast, canEdit }) {
+function NtpTab({ data, setData, showToast, canEdit, projectName }) {
   const [name, setName] = useState("");
   const [shortName, setShortName] = useState("");
+  const [objectCode, setObjectCode] = useState("");
+  const [scope, setScope] = useState("");
+  const [taxCode, setTaxCode] = useState("");
+  const [representative, setRepresentative] = useState("");
+  const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
+  const [contractNo, setContractNo] = useState("");
+  const [advancePercent, setAdvancePercent] = useState("");
+  const [advanceDeadline, setAdvanceDeadline] = useState("");
+  const [paymentPercent, setPaymentPercent] = useState("");
+  const [paymentTermDays, setPaymentTermDays] = useState("");
+  const [settlementDeadline, setSettlementDeadline] = useState("");
+  const [warrantyPeriod, setWarrantyPeriod] = useState("");
+  const [note, setNote] = useState("");
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [expandedId, setExpandedId] = useState(null);
+
   const [minuteType, setMinuteType] = useState("Biên bản khấu trừ (có giá trị)");
   const [minuteValue, setMinuteValue] = useState("");
   const [minuteNote, setMinuteNote] = useState("");
   const [selectedNtp, setSelectedNtp] = useState("");
 
+  const resetForm = () => {
+    setName(""); setShortName(""); setObjectCode(""); setScope(""); setTaxCode("");
+    setRepresentative(""); setPhone(""); setEmail(""); setContractNo("");
+    setAdvancePercent(""); setAdvanceDeadline(""); setPaymentPercent(""); setPaymentTermDays("");
+    setSettlementDeadline(""); setWarrantyPeriod(""); setNote("");
+  };
+
   const addSub = () => {
     if (!name) { showToast("Nhập tên nhà thầu phụ", "err"); return; }
-    setData({ ...data, subcontractors: [...data.subcontractors, { id: uid(), name, shortName: shortName || name, minutes: [] }] });
-    setName(""); setShortName("");
+    const sub = {
+      id: uid(), name, shortName: shortName || name, minutes: [],
+      objectCode, scope, taxCode, representative, phone, email, contractNo, project: projectName,
+      advancePercent, advanceDeadline, paymentPercent, paymentTermDays, settlementDeadline, warrantyPeriod, note,
+    };
+    setData({ ...data, subcontractors: [...data.subcontractors, sub] });
+    resetForm();
     showToast("Đã thêm nhà thầu phụ");
   };
   const removeSub = (id) => setData({ ...data, subcontractors: data.subcontractors.filter((s) => s.id !== id) });
@@ -1822,29 +1851,221 @@ function NtpTab({ data, setData, showToast, canEdit }) {
     showToast("Đã lưu biên bản");
   };
 
+  /* ---------- nạp danh sách NTP bằng file Excel ---------- */
+  const [filePreview, setFilePreview] = useState([]);
+  const [fileName, setFileName] = useState("");
+  const [fileParsing, setFileParsing] = useState(false);
+  const fileInputRef = useRef(null);
+
+  const NTP_HEADER_ALIASES = {
+    project: ["cong trinh"],
+    contractNo: ["hop dong"],
+    objectCode: ["ma doi tuong"],
+    name: ["ten doi tuong", "ten ntp", "nha thau phu", "ten day du"],
+    shortName: ["ten ngan gon"],
+    taxCode: ["mst", "ma so thue"],
+    representative: ["nguoi dai dien"],
+    phone: ["so dien thoai", "dien thoai"],
+    email: ["email"],
+    scope: ["pham vi cung cap", "pham vi", "pham vi thi cong"],
+    advancePercent: ["tam ung"],
+    advanceDeadline: ["thoi han tam ung"],
+    paymentPercent: ["thanh toan"],
+    paymentTermDays: ["thoi han thanh toan"],
+    settlementDeadline: ["thoi han quyet toan", "quyet toan"],
+    warrantyPeriod: ["thoi gian bao hanh", "bao hanh"],
+    note: ["ghi chu"],
+  };
+
+  const downloadTemplate = async () => {
+    const XLSX = await import("xlsx");
+    const aoa = [
+      ["Công Trình", "Hợp đồng", "Mã đối tượng", "Tên đối tượng", "Tên ngắn gọn", "MST", "Người đại diện", "Số điện thoại", "Email", "Phạm vi thi công", "% Tạm ứng", "Thời hạn tạm ứng", "% Thanh toán", "Thời hạn thanh toán", "Thời hạn Quyết toán", "Thời gian bảo hành", "Ghi chú"],
+      [projectName || "", "PC-95 10 13-33778-25.10", "NTP05283", "Công ty TNHH Xây lắp Cơ điện ABC", "ABC", "0312345678", "Nguyễn Văn A", "0901234567", "a@congty.vn", "Lắp đặt hệ thống cấp thoát nước", "10%", "", "", "30", "", "12 tháng", ""],
+    ];
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    ws["!cols"] = aoa[0].map(() => ({ wch: 18 }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "NhaThauPhu");
+    XLSX.writeFile(wb, "Mau_Nap_NhaThauPhu.xlsx");
+  };
+
+  const handleFile = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setFileParsing(true);
+    setFileName(file.name);
+    try {
+      const XLSX = await import("xlsx");
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(buf, { type: "array" });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
+
+      const { headerRowIdx, score } = detectHeaderRow(aoa, NTP_HEADER_ALIASES);
+      if (score < 2) {
+        showToast("Không tìm thấy dòng tiêu đề phù hợp trong file", "err");
+        setFilePreview([]); setFileParsing(false); e.target.value = ""; return;
+      }
+      const colFieldMap = buildColFieldMap(aoa[headerRowIdx], NTP_HEADER_ALIASES);
+      const mapped = [];
+      for (let r = headerRowIdx + 1; r < aoa.length; r++) {
+        const row = aoa[r];
+        if (!row || row.every((c) => String(c ?? "").trim() === "")) continue;
+        const out = {};
+        Object.keys(NTP_HEADER_ALIASES).forEach((f) => (out[f] = ""));
+        row.forEach((cell, idx) => {
+          const field = colFieldMap[idx];
+          if (field) out[field] = String(cell ?? "").trim();
+        });
+        if (out.name) mapped.push(out);
+      }
+      if (!mapped.length) showToast("Không đọc được dòng nào — kiểm tra cột Tên đối tượng", "err");
+      setFilePreview(mapped);
+    } catch {
+      showToast("Không đọc được file — hãy chắc chắn đây là file .xlsx", "err");
+      setFilePreview([]);
+    } finally {
+      setFileParsing(false);
+      e.target.value = "";
+    }
+  };
+
+  const commitImport = () => {
+    if (!filePreview.length) return;
+    const items = filePreview.map((r) => ({ id: uid(), ...r, shortName: r.shortName || r.name, minutes: [] }));
+    setData({ ...data, subcontractors: [...data.subcontractors, ...items] });
+    showToast(`Đã nạp ${items.length} nhà thầu phụ từ file Excel`);
+    setFilePreview([]); setFileName("");
+  };
+
   return (
     <div className="flex flex-col gap-5">
+      {!canEdit && <PermissionNotice />}
+
       <div className="bg-white rounded-xl border border-[#E4E6EA] p-4">
         <div className="font-semibold text-[13px] mb-3">Danh mục nhà thầu phụ</div>
-        <div className="flex flex-wrap gap-3">
-          <Field label="Tên đầy đủ"><input className={inputCls} value={name} onChange={(e) => setName(e.target.value)} placeholder="VD: Công ty TNHH Xây lắp ABC" /></Field>
-          <Field label="Tên viết gọn"><input className={inputCls} value={shortName} onChange={(e) => setShortName(e.target.value)} placeholder="tự tạo" /></Field>
-          <div className="flex items-end"><Btn onClick={addSub} disabled={!canEdit}><Plus size={14} /> Thêm nhà thầu phụ</Btn></div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <Field label="Tên đầy đủ *"><input className={inputCls} value={name} onChange={(e) => setName(e.target.value)} placeholder="VD: Công ty TNHH Xây lắp ABC" disabled={!canEdit} /></Field>
+          <Field label="Tên viết gọn"><input className={inputCls} value={shortName} onChange={(e) => setShortName(e.target.value)} placeholder="tự tạo" disabled={!canEdit} /></Field>
+          <Field label="Mã đối tượng"><input className={inputCls} value={objectCode} onChange={(e) => setObjectCode(e.target.value)} disabled={!canEdit} /></Field>
+          <Field label="Phạm vi thi công"><input className={inputCls} value={scope} onChange={(e) => setScope(e.target.value)} disabled={!canEdit} /></Field>
         </div>
+
+        <button onClick={() => setShowAdvanced((v) => !v)} className="mt-3 text-[12.5px] text-[#2856C7] font-medium flex items-center gap-1">
+          <ChevronDown size={14} className={`transition-transform ${showAdvanced ? "rotate-180" : ""}`} />
+          {showAdvanced ? "Ẩn thông tin hợp đồng & thanh toán" : "Thêm thông tin hợp đồng & thanh toán"}
+        </button>
+
+        {showAdvanced && (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3 pt-3 border-t border-[#F1F2F4]">
+            <Field label="MST"><input className={inputCls} value={taxCode} onChange={(e) => setTaxCode(e.target.value)} disabled={!canEdit} /></Field>
+            <Field label="Người đại diện"><input className={inputCls} value={representative} onChange={(e) => setRepresentative(e.target.value)} disabled={!canEdit} /></Field>
+            <Field label="Số điện thoại"><input className={inputCls} value={phone} onChange={(e) => setPhone(e.target.value)} disabled={!canEdit} /></Field>
+            <Field label="Email"><input className={inputCls} value={email} onChange={(e) => setEmail(e.target.value)} disabled={!canEdit} /></Field>
+            <Field label="Hợp đồng"><input className={inputCls} value={contractNo} onChange={(e) => setContractNo(e.target.value)} disabled={!canEdit} /></Field>
+            <Field label="% Tạm ứng"><input className={inputCls} value={advancePercent} onChange={(e) => setAdvancePercent(e.target.value)} placeholder="VD: 10%" disabled={!canEdit} /></Field>
+            <Field label="Thời hạn tạm ứng"><input className={inputCls} value={advanceDeadline} onChange={(e) => setAdvanceDeadline(e.target.value)} disabled={!canEdit} /></Field>
+            <Field label="% Thanh toán"><input className={inputCls} value={paymentPercent} onChange={(e) => setPaymentPercent(e.target.value)} disabled={!canEdit} /></Field>
+            <Field label="Thời hạn thanh toán (ngày)"><input className={inputCls} value={paymentTermDays} onChange={(e) => setPaymentTermDays(e.target.value)} disabled={!canEdit} /></Field>
+            <Field label="Thời hạn Quyết toán"><input className={inputCls} value={settlementDeadline} onChange={(e) => setSettlementDeadline(e.target.value)} disabled={!canEdit} /></Field>
+            <Field label="Thời gian bảo hành"><input className={inputCls} value={warrantyPeriod} onChange={(e) => setWarrantyPeriod(e.target.value)} placeholder="VD: 12 tháng" disabled={!canEdit} /></Field>
+            <Field label="Ghi chú"><input className={inputCls} value={note} onChange={(e) => setNote(e.target.value)} disabled={!canEdit} /></Field>
+          </div>
+        )}
+
+        <div className="mt-3"><Btn onClick={addSub} disabled={!canEdit}><Plus size={14} /> Thêm nhà thầu phụ</Btn></div>
+
         <table className="w-full text-[12.5px] mt-4">
           <thead className="text-[#5B6169]"><tr><th className="text-left px-2 py-1.5 font-medium">Tên đầy đủ</th><th className="text-left px-2 py-1.5 font-medium">Tên viết gọn</th><th className="text-right px-2 py-1.5 font-medium">Số biên bản</th><th></th></tr></thead>
           <tbody>
-            {data.subcontractors.map((s) => (
-              <tr key={s.id} className="border-t border-[#F1F2F4]">
-                <td className="px-2 py-1.5">{s.name}</td>
-                <td className="px-2 py-1.5">{s.shortName}</td>
-                <td className="px-2 py-1.5 text-right">{(s.minutes || []).length}</td>
-                <td className="px-2 py-1.5 text-right">{canEdit && <button onClick={() => removeSub(s.id)} className="text-[#C0392B] hover:bg-[#FDECEC] p-1 rounded"><Trash2 size={13} /></button>}</td>
-              </tr>
-            ))}
+            {data.subcontractors.map((s) => {
+              const expanded = expandedId === s.id;
+              const hasDetail = s.taxCode || s.representative || s.phone || s.email || s.contractNo || s.advancePercent || s.paymentPercent || s.warrantyPeriod || s.note;
+              return (
+                <React.Fragment key={s.id}>
+                  <tr className="border-t border-[#F1F2F4] hover:bg-[#FAFBFC] cursor-pointer" onClick={() => hasDetail && setExpandedId(expanded ? null : s.id)}>
+                    <td className="px-2 py-1.5 flex items-center gap-1.5">
+                      {hasDetail && <ChevronDown size={13} className={`text-[#8A8F98] transition-transform ${expanded ? "rotate-180" : ""}`} />}
+                      {s.name}
+                    </td>
+                    <td className="px-2 py-1.5">{s.shortName}</td>
+                    <td className="px-2 py-1.5 text-right">{(s.minutes || []).length}</td>
+                    <td className="px-2 py-1.5 text-right">{canEdit && <button onClick={(e) => { e.stopPropagation(); removeSub(s.id); }} className="text-[#C0392B] hover:bg-[#FDECEC] p-1 rounded"><Trash2 size={13} /></button>}</td>
+                  </tr>
+                  {expanded && (
+                    <tr className="bg-[#FAFBFC] border-t border-[#F1F2F4]">
+                      <td colSpan={4} className="px-2 py-3">
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-2 text-[12px]">
+                          {s.objectCode && <div><span className="text-[#8A8F98]">Mã đối tượng:</span> {s.objectCode}</div>}
+                          {s.scope && <div><span className="text-[#8A8F98]">Phạm vi:</span> {s.scope}</div>}
+                          {s.taxCode && <div><span className="text-[#8A8F98]">MST:</span> {s.taxCode}</div>}
+                          {s.representative && <div><span className="text-[#8A8F98]">Người đại diện:</span> {s.representative}</div>}
+                          {s.phone && <div><span className="text-[#8A8F98]">SĐT:</span> {s.phone}</div>}
+                          {s.email && <div><span className="text-[#8A8F98]">Email:</span> {s.email}</div>}
+                          {s.contractNo && <div><span className="text-[#8A8F98]">Hợp đồng:</span> {s.contractNo}</div>}
+                          {s.advancePercent && <div><span className="text-[#8A8F98]">% Tạm ứng:</span> {s.advancePercent}</div>}
+                          {s.paymentPercent && <div><span className="text-[#8A8F98]">% Thanh toán:</span> {s.paymentPercent}</div>}
+                          {s.paymentTermDays && <div><span className="text-[#8A8F98]">Thời hạn thanh toán:</span> {s.paymentTermDays} ngày</div>}
+                          {s.settlementDeadline && <div><span className="text-[#8A8F98]">Thời hạn quyết toán:</span> {s.settlementDeadline}</div>}
+                          {s.warrantyPeriod && <div><span className="text-[#8A8F98]">Bảo hành:</span> {s.warrantyPeriod}</div>}
+                          {s.note && <div className="col-span-2 md:col-span-4"><span className="text-[#8A8F98]">Ghi chú:</span> {s.note}</div>}
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </React.Fragment>
+              );
+            })}
             {data.subcontractors.length === 0 && <tr><td colSpan={4} className="text-center py-4 text-[#8A8F98]">Chưa có nhà thầu phụ</td></tr>}
           </tbody>
         </table>
+      </div>
+
+      <div className="bg-white rounded-xl border border-[#E4E6EA] p-4">
+        <div className="font-semibold text-[13px] mb-1">Nạp bằng file Excel</div>
+        <div className="text-[12px] text-[#8A8F98] mb-3">Tải file mẫu → điền danh sách NTP → tải lên lại. App tự nhận diện cột theo tiêu đề.</div>
+        <div className="flex flex-wrap gap-2">
+          <Btn variant="outline" onClick={downloadTemplate}><Download size={14} /> Tải file mẫu Excel</Btn>
+          <Btn variant="outline" onClick={() => fileInputRef.current?.click()} disabled={!canEdit || fileParsing}>
+            <Upload size={14} /> {fileParsing ? "Đang đọc file…" : "Chọn file Excel để nạp"}
+          </Btn>
+          <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleFile} />
+        </div>
+
+        {filePreview.length > 0 && (
+          <div className="mt-4">
+            <div className="text-[12.5px] font-medium mb-2">Xem trước từ file "{fileName}" — {filePreview.length} NTP</div>
+            <div className="overflow-auto max-h-[300px] border border-[#E4E6EA] rounded-lg">
+              <table className="w-full text-[12.5px]">
+                <thead className="bg-[#F8F9FB] text-[#5B6169] sticky top-0">
+                  <tr>
+                    <th className="text-left px-3 py-2 font-medium">Mã đối tượng</th>
+                    <th className="text-left px-3 py-2 font-medium">Tên đối tượng</th>
+                    <th className="text-left px-3 py-2 font-medium">MST</th>
+                    <th className="text-left px-3 py-2 font-medium">Người đại diện</th>
+                    <th className="text-left px-3 py-2 font-medium">SĐT</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filePreview.map((r, i) => (
+                    <tr key={i} className="border-t border-[#F1F2F4]" title={[r.scope && `Phạm vi: ${r.scope}`, r.email && `Email: ${r.email}`, r.note].filter(Boolean).join(" · ")}>
+                      <td className="px-3 py-2 text-[#8A8F98]">{r.objectCode}</td>
+                      <td className="px-3 py-2 font-medium">{r.name}</td>
+                      <td className="px-3 py-2">{r.taxCode}</td>
+                      <td className="px-3 py-2">{r.representative}</td>
+                      <td className="px-3 py-2">{r.phone}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="mt-3 flex gap-2">
+              <Btn onClick={commitImport} variant="success" disabled={!canEdit}><CheckCircle2 size={14} /> Nạp {filePreview.length} NTP</Btn>
+              <Btn onClick={() => { setFilePreview([]); setFileName(""); }} variant="ghost">Huỷ</Btn>
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="bg-white rounded-xl border border-[#E4E6EA] p-4">
