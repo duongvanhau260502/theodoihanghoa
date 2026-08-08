@@ -721,6 +721,10 @@ function Dashboard({ data, statusByItem, allAlerts }) {
 function BoqTab({ data, setData, showToast, canEdit }) {
   const [form, setForm] = useState({ code: "", desc: "", model: "", unit: "m", qty: "", supplierId: "", category: "" });
   const [pasteText, setPasteText] = useState("");
+  const [filePreview, setFilePreview] = useState([]);
+  const [fileName, setFileName] = useState("");
+  const [fileParsing, setFileParsing] = useState(false);
+  const fileInputRef = useRef(null);
 
   const addItem = () => {
     if (!form.desc || !form.qty) { showToast("Cần nhập mô tả và khối lượng", "err"); return; }
@@ -737,6 +741,90 @@ function BoqTab({ data, setData, showToast, canEdit }) {
     setData({ ...data, boqItems: [...data.boqItems, ...items] });
     setPasteText("");
     showToast(`Đã nạp ${items.length} đầu mục từ dữ liệu dán`);
+  };
+
+  const downloadTemplate = async () => {
+    const XLSX = await import("xlsx");
+    const sample = [
+      { "Mã": "I", "Mô tả": "Ống nhựa PPR DN20 PN16", "Model": "Ống nhựa PPR DN20 PN16", "ĐVT": "m", "KL BoQ": 7570, "Nhà cung cấp": "CHÂU ÂU XANH", "Nhóm vật tư": "PPR" },
+      { "Mã": "", "Mô tả": "", "Model": "", "ĐVT": "", "KL BoQ": "", "Nhà cung cấp": "", "Nhóm vật tư": "" },
+    ];
+    const ws = XLSX.utils.json_to_sheet(sample);
+    ws["!cols"] = [{ wch: 8 }, { wch: 32 }, { wch: 32 }, { wch: 8 }, { wch: 12 }, { wch: 20 }, { wch: 16 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "BoQ");
+    XLSX.writeFile(wb, "Mau_Nap_BoQ.xlsx");
+  };
+
+  const HEADER_ALIASES = {
+    code: ["ma", "so tt", "stt", "ma so", "ma vat tu"],
+    desc: ["mo ta", "ten vat tu", "san pham", "ten hang", "mo ta vat tu", "ten"],
+    model: ["model"],
+    unit: ["dvt", "don vi", "don vi tinh"],
+    qty: ["kl boq", "khoi luong", "so luong", "kl", "khoi luong boq"],
+    supplierName: ["nha cung cap", "ncc", "nha cung cap ncc"],
+    category: ["nhom vat tu", "loai vat tu", "category", "nhom"],
+  };
+
+  const mapRow = (raw) => {
+    const out = { code: "", desc: "", model: "", unit: "m", qty: 0, supplierName: "", category: "" };
+    Object.entries(raw).forEach(([key, val]) => {
+      const nk = normalize(key);
+      for (const [field, aliases] of Object.entries(HEADER_ALIASES)) {
+        if (aliases.includes(nk)) {
+          out[field] = field === "qty" ? Number(String(val).replace(/,/g, "")) || 0 : String(val ?? "").trim();
+        }
+      }
+    });
+    if (!out.model) out.model = out.desc;
+    return out;
+  };
+
+  const handleFileChange = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setFileParsing(true);
+    setFileName(file.name);
+    try {
+      const XLSX = await import("xlsx");
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(buf, { type: "array" });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rawRows = XLSX.utils.sheet_to_json(ws, { defval: "" });
+      const mapped = rawRows.map(mapRow).filter((r) => r.desc && r.qty);
+      if (!mapped.length) {
+        showToast("Không đọc được dòng nào hợp lệ — kiểm tra lại tiêu đề cột trong file", "err");
+      }
+      setFilePreview(mapped);
+    } catch (err) {
+      showToast("Không đọc được file — hãy chắc chắn đây là file .xlsx", "err");
+      setFilePreview([]);
+    } finally {
+      setFileParsing(false);
+      e.target.value = "";
+    }
+  };
+
+  const commitFileImport = () => {
+    if (!filePreview.length) return;
+    let suppliers = [...data.suppliers];
+    const findOrCreateSupplier = (name) => {
+      if (!name) return null;
+      let s = suppliers.find((s) => s.name.toLowerCase() === name.toLowerCase());
+      if (!s) {
+        s = { id: uid(), name, scope: "", leadTimeDays: 0 };
+        suppliers.push(s);
+      }
+      return s.id;
+    };
+    const items = filePreview.map((r) => ({
+      id: uid(), code: r.code, desc: r.desc, model: r.model, unit: r.unit || "m",
+      qty: r.qty, supplierId: findOrCreateSupplier(r.supplierName), category: r.category,
+    }));
+    setData({ ...data, boqItems: [...data.boqItems, ...items], suppliers });
+    showToast(`Đã nạp ${items.length} đầu mục từ file Excel`);
+    setFilePreview([]);
+    setFileName("");
   };
 
   const removeItem = (id) => setData({ ...data, boqItems: data.boqItems.filter((i) => i.id !== id) });
@@ -773,6 +861,61 @@ function BoqTab({ data, setData, showToast, canEdit }) {
         <div className="text-[12px] text-[#8A8F98] mb-2">Mỗi dòng: Mô tả [Tab] Model [Tab] Khối lượng — model có thể bỏ trống.</div>
         <textarea className={`${inputCls} w-full h-24 font-mono text-[12px]`} placeholder={"Ống nhựa uPVC DN90 PN8\\tỐng nhựa uPVC DN90 PN8\\t2456\nỐng nhựa uPVC DN110 PN8\\t\\t6880.5"} value={pasteText} onChange={(e) => setPasteText(e.target.value)} disabled={!canEdit} />
         <div className="mt-2"><Btn onClick={bulkImport} variant="outline" disabled={!canEdit}><Upload size={14} /> Nạp vào BoQ</Btn></div>
+      </div>
+
+      <div className="bg-white rounded-xl border border-[#E4E6EA] p-4">
+        <div className="font-semibold text-[13px] mb-1">Nạp bằng file Excel (khuyến nghị cho dữ liệu lớn)</div>
+        <div className="text-[12px] text-[#8A8F98] mb-3">Tải file mẫu → điền dữ liệu vào Excel → tải file đã điền lên lại. App tự nhận diện cột theo tên tiêu đề (Mã, Mô tả, Model, ĐVT, KL BoQ, Nhà cung cấp, Nhóm vật tư — không phụ thuộc thứ tự cột). Nhà cung cấp mới sẽ được tự tạo nếu chưa có trong danh mục.</div>
+        <div className="flex flex-wrap gap-2">
+          <Btn variant="outline" onClick={downloadTemplate}><Download size={14} /> Tải file mẫu Excel</Btn>
+          <Btn variant="outline" onClick={() => fileInputRef.current?.click()} disabled={!canEdit || fileParsing}>
+            <Upload size={14} /> {fileParsing ? "Đang đọc file…" : "Chọn file Excel để nạp"}
+          </Btn>
+          <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleFileChange} />
+        </div>
+
+        {filePreview.length > 0 && (
+          <div className="mt-4">
+            <div className="text-[12.5px] font-medium mb-2">Xem trước từ file "{fileName}" — {filePreview.length} dòng hợp lệ</div>
+            <div className="overflow-auto max-h-[300px] border border-[#E4E6EA] rounded-lg">
+              <table className="w-full text-[12.5px]">
+                <thead className="bg-[#F8F9FB] text-[#5B6169] sticky top-0">
+                  <tr>
+                    <th className="text-left px-3 py-2 font-medium">Mã</th>
+                    <th className="text-left px-3 py-2 font-medium">Mô tả</th>
+                    <th className="text-left px-3 py-2 font-medium">Model</th>
+                    <th className="text-center px-3 py-2 font-medium">ĐVT</th>
+                    <th className="text-right px-3 py-2 font-medium">KL BoQ</th>
+                    <th className="text-left px-3 py-2 font-medium">Nhà cung cấp</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filePreview.map((r, i) => {
+                    const exists = data.suppliers.some((s) => s.name.toLowerCase() === r.supplierName.toLowerCase());
+                    return (
+                      <tr key={i} className="border-t border-[#F1F2F4]">
+                        <td className="px-3 py-2 text-[#8A8F98]">{r.code}</td>
+                        <td className="px-3 py-2 font-medium">{r.desc}</td>
+                        <td className="px-3 py-2 text-[#5B6169]">{r.model}</td>
+                        <td className="px-3 py-2 text-center">{r.unit}</td>
+                        <td className="px-3 py-2 text-right">{r.qty.toLocaleString("vi-VN")}</td>
+                        <td className="px-3 py-2">
+                          {r.supplierName ? (
+                            exists ? r.supplierName : <Badge level="amber">{r.supplierName} (mới)</Badge>
+                          ) : <span className="text-[#8A8F98]">—</span>}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            <div className="mt-3 flex gap-2">
+              <Btn onClick={commitFileImport} variant="success" disabled={!canEdit}><CheckCircle2 size={14} /> Nạp {filePreview.length} dòng vào BoQ</Btn>
+              <Btn onClick={() => { setFilePreview([]); setFileName(""); }} variant="ghost">Huỷ</Btn>
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="bg-white rounded-xl border border-[#E4E6EA]">
