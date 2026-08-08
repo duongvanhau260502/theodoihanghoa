@@ -724,6 +724,7 @@ function BoqTab({ data, setData, showToast, canEdit }) {
   const [filePreview, setFilePreview] = useState([]);
   const [fileName, setFileName] = useState("");
   const [fileParsing, setFileParsing] = useState(false);
+  const [detectedMeta, setDetectedMeta] = useState(null);
   const fileInputRef = useRef(null);
 
   const addItem = () => {
@@ -745,12 +746,18 @@ function BoqTab({ data, setData, showToast, canEdit }) {
 
   const downloadTemplate = async () => {
     const XLSX = await import("xlsx");
-    const sample = [
-      { "Mã": "I", "Mô tả": "Ống nhựa PPR DN20 PN16", "Model": "Ống nhựa PPR DN20 PN16", "ĐVT": "m", "KL BoQ": 7570, "Nhà cung cấp": "CHÂU ÂU XANH", "Nhóm vật tư": "PPR" },
-      { "Mã": "", "Mô tả": "", "Model": "", "ĐVT": "", "KL BoQ": "", "Nhà cung cấp": "", "Nhóm vật tư": "" },
+    const headers = ["STT", "Mô tả BOQ", "Mô Tả Chi Tiết Sản Phẩm", "Đơn vị", "Khối lượng", "Thông số kỹ thuật", "QUY CÁCH/ MÃ HIỆU", "NHÃN HIỆU", "XUẤT XỨ", "Đơn giá", "Thành tiền", "Ghi chú", "Nhà cung cấp", "Nhóm vật tư"];
+    const meta = [
+      ["Dự án:", data.meta.projectName || ""],
+      ["Gói thầu:", data.meta.packageName || ""],
+      ["Hạng mục:", data.meta.hangMuc || ""],
+      [],
+      headers,
+      ["I", "Ống nhựa PPR DN20 PN16", "Ống nhựa PPR, mối nối hàn nhiệt", "m", 7570, "PN16", "PPR-DN20", "Đại Thành", "Việt Nam", 25000, "", "", "CHÂU ÂU XANH", "PPR"],
+      [],
     ];
-    const ws = XLSX.utils.json_to_sheet(sample);
-    ws["!cols"] = [{ wch: 8 }, { wch: 32 }, { wch: 32 }, { wch: 8 }, { wch: 12 }, { wch: 20 }, { wch: 16 }];
+    const ws = XLSX.utils.aoa_to_sheet(meta);
+    ws["!cols"] = headers.map(() => ({ wch: 18 }));
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "BoQ");
     XLSX.writeFile(wb, "Mau_Nap_BoQ.xlsx");
@@ -758,26 +765,58 @@ function BoqTab({ data, setData, showToast, canEdit }) {
 
   const HEADER_ALIASES = {
     code: ["ma", "so tt", "stt", "ma so", "ma vat tu"],
-    desc: ["mo ta", "ten vat tu", "san pham", "ten hang", "mo ta vat tu", "ten"],
-    model: ["model"],
+    desc: ["mo ta", "mo ta boq", "ten vat tu", "san pham", "ten hang", "mo ta vat tu", "ten"],
+    detail: ["mo ta chi tiet san pham", "mo ta chi tiet", "chi tiet san pham"],
     unit: ["dvt", "don vi", "don vi tinh"],
     qty: ["kl boq", "khoi luong", "so luong", "kl", "khoi luong boq"],
+    specs: ["thong so ky thuat", "thong so"],
+    model: ["model", "quy cach ma hieu", "quy cach", "ma hieu"],
+    brand: ["nhan hieu"],
+    origin: ["xuat xu"],
+    unitPrice: ["don gia"],
+    totalPrice: ["thanh tien"],
+    note: ["ghi chu"],
     supplierName: ["nha cung cap", "ncc", "nha cung cap ncc"],
     category: ["nhom vat tu", "loai vat tu", "category", "nhom"],
   };
 
-  const mapRow = (raw) => {
-    const out = { code: "", desc: "", model: "", unit: "m", qty: 0, supplierName: "", category: "" };
-    Object.entries(raw).forEach(([key, val]) => {
-      const nk = normalize(key);
-      for (const [field, aliases] of Object.entries(HEADER_ALIASES)) {
-        if (aliases.includes(nk)) {
-          out[field] = field === "qty" ? Number(String(val).replace(/,/g, "")) || 0 : String(val ?? "").trim();
+  const NUMERIC_FIELDS = new Set(["qty", "unitPrice", "totalPrice"]);
+
+  // Dò dòng tiêu đề thật trong file (có thể không phải dòng 1, vì phía trên
+  // có thể có các dòng "Dự án / Gói thầu / Hạng mục" như mẫu công trình thật).
+  const detectHeaderRow = (aoa) => {
+    let bestIdx = 0, bestScore = 0;
+    const scanRows = Math.min(aoa.length, 20);
+    for (let i = 0; i < scanRows; i++) {
+      const row = aoa[i] || [];
+      let score = 0;
+      row.forEach((cell) => {
+        const nk = normalize(String(cell ?? ""));
+        if (!nk) return;
+        for (const aliases of Object.values(HEADER_ALIASES)) {
+          if (aliases.includes(nk)) { score++; break; }
         }
-      }
-    });
-    if (!out.model) out.model = out.desc;
-    return out;
+      });
+      if (score > bestScore) { bestScore = score; bestIdx = i; }
+    }
+    return { headerRowIdx: bestIdx, score: bestScore };
+  };
+
+  // Cố gắng đọc "Dự án / Gói thầu / Hạng mục" ở các dòng phía trên tiêu đề.
+  const detectMeta = (aoa, headerRowIdx) => {
+    const meta = {};
+    for (let i = 0; i < headerRowIdx; i++) {
+      const row = aoa[i] || [];
+      row.forEach((cell, idx) => {
+        const text = normalize(String(cell ?? ""));
+        const nextVal = row.slice(idx + 1).find((c) => String(c ?? "").trim() !== "");
+        if (!nextVal) return;
+        if (text.includes("du an")) meta.projectName = String(nextVal).trim();
+        else if (text.includes("goi thau")) meta.packageName = String(nextVal).trim();
+        else if (text.includes("hang muc")) meta.hangMuc = String(nextVal).trim();
+      });
+    }
+    return meta;
   };
 
   const handleFileChange = async (e) => {
@@ -790,10 +829,47 @@ function BoqTab({ data, setData, showToast, canEdit }) {
       const buf = await file.arrayBuffer();
       const wb = XLSX.read(buf, { type: "array" });
       const ws = wb.Sheets[wb.SheetNames[0]];
-      const rawRows = XLSX.utils.sheet_to_json(ws, { defval: "" });
-      const mapped = rawRows.map(mapRow).filter((r) => r.desc && r.qty);
+      const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
+
+      const { headerRowIdx, score } = detectHeaderRow(aoa);
+      if (score < 2) {
+        showToast("Không tìm thấy dòng tiêu đề phù hợp — kiểm tra lại tên cột trong file", "err");
+        setFilePreview([]);
+        setFileParsing(false);
+        e.target.value = "";
+        return;
+      }
+      const headerRow = aoa[headerRowIdx];
+      const colFieldMap = headerRow.map((h) => {
+        const nk = normalize(String(h ?? ""));
+        for (const [field, aliases] of Object.entries(HEADER_ALIASES)) {
+          if (aliases.includes(nk)) return field;
+        }
+        return null;
+      });
+
+      const mapped = [];
+      for (let r = headerRowIdx + 1; r < aoa.length; r++) {
+        const row = aoa[r];
+        if (!row || row.every((c) => String(c ?? "").trim() === "")) continue;
+        const out = { code: "", desc: "", detail: "", model: "", unit: "m", qty: 0, specs: "", brand: "", origin: "", unitPrice: 0, totalPrice: 0, note: "", supplierName: "", category: "" };
+        row.forEach((cell, idx) => {
+          const field = colFieldMap[idx];
+          if (!field) return;
+          if (NUMERIC_FIELDS.has(field)) out[field] = Number(String(cell).replace(/[^0-9.-]/g, "")) || 0;
+          else out[field] = String(cell ?? "").trim();
+        });
+        if (!out.model) out.model = out.desc;
+        if (out.desc && out.qty) mapped.push(out);
+      }
+
       if (!mapped.length) {
-        showToast("Không đọc được dòng nào hợp lệ — kiểm tra lại tiêu đề cột trong file", "err");
+        showToast("Không đọc được dòng dữ liệu nào — kiểm tra lại cột Mô tả và Khối lượng", "err");
+      } else {
+        const meta = detectMeta(aoa, headerRowIdx);
+        if (meta.projectName || meta.packageName || meta.hangMuc) {
+          setDetectedMeta(meta);
+        }
       }
       setFilePreview(mapped);
     } catch (err) {
@@ -805,7 +881,7 @@ function BoqTab({ data, setData, showToast, canEdit }) {
     }
   };
 
-  const commitFileImport = () => {
+  const commitFileImport = (applyMeta) => {
     if (!filePreview.length) return;
     let suppliers = [...data.suppliers];
     const findOrCreateSupplier = (name) => {
@@ -818,13 +894,17 @@ function BoqTab({ data, setData, showToast, canEdit }) {
       return s.id;
     };
     const items = filePreview.map((r) => ({
-      id: uid(), code: r.code, desc: r.desc, model: r.model, unit: r.unit || "m",
-      qty: r.qty, supplierId: findOrCreateSupplier(r.supplierName), category: r.category,
+      id: uid(), code: r.code, desc: r.desc, detail: r.detail, model: r.model, unit: r.unit || "m",
+      qty: r.qty, specs: r.specs, brand: r.brand, origin: r.origin,
+      unitPrice: r.unitPrice, totalPrice: r.totalPrice || (r.unitPrice ? r.unitPrice * r.qty : 0), note: r.note,
+      supplierId: findOrCreateSupplier(r.supplierName), category: r.category,
     }));
-    setData({ ...data, boqItems: [...data.boqItems, ...items], suppliers });
+    const newMeta = applyMeta && detectedMeta ? { ...data.meta, ...detectedMeta } : data.meta;
+    setData({ ...data, boqItems: [...data.boqItems, ...items], suppliers, meta: newMeta });
     showToast(`Đã nạp ${items.length} đầu mục từ file Excel`);
     setFilePreview([]);
     setFileName("");
+    setDetectedMeta(null);
   };
 
   const removeItem = (id) => setData({ ...data, boqItems: data.boqItems.filter((i) => i.id !== id) });
@@ -877,15 +957,26 @@ function BoqTab({ data, setData, showToast, canEdit }) {
         {filePreview.length > 0 && (
           <div className="mt-4">
             <div className="text-[12.5px] font-medium mb-2">Xem trước từ file "{fileName}" — {filePreview.length} dòng hợp lệ</div>
+
+            {detectedMeta && (detectedMeta.projectName || detectedMeta.packageName || detectedMeta.hangMuc) && (
+              <div className="mb-3 bg-[#EAF1FC] border border-[#B9D2F0] rounded-lg px-3 py-2 text-[12px] text-[#2E5FA3]">
+                Phát hiện thông tin dự án trong file:
+                {detectedMeta.projectName && <> · Dự án: <b>{detectedMeta.projectName}</b></>}
+                {detectedMeta.packageName && <> · Gói thầu: <b>{detectedMeta.packageName}</b></>}
+                {detectedMeta.hangMuc && <> · Hạng mục: <b>{detectedMeta.hangMuc}</b></>}
+              </div>
+            )}
+
             <div className="overflow-auto max-h-[300px] border border-[#E4E6EA] rounded-lg">
               <table className="w-full text-[12.5px]">
                 <thead className="bg-[#F8F9FB] text-[#5B6169] sticky top-0">
                   <tr>
                     <th className="text-left px-3 py-2 font-medium">Mã</th>
-                    <th className="text-left px-3 py-2 font-medium">Mô tả</th>
-                    <th className="text-left px-3 py-2 font-medium">Model</th>
+                    <th className="text-left px-3 py-2 font-medium">Mô tả BOQ</th>
+                    <th className="text-left px-3 py-2 font-medium">Quy cách/Mã hiệu</th>
                     <th className="text-center px-3 py-2 font-medium">ĐVT</th>
-                    <th className="text-right px-3 py-2 font-medium">KL BoQ</th>
+                    <th className="text-right px-3 py-2 font-medium">Khối lượng</th>
+                    <th className="text-right px-3 py-2 font-medium">Đơn giá</th>
                     <th className="text-left px-3 py-2 font-medium">Nhà cung cấp</th>
                   </tr>
                 </thead>
@@ -893,12 +984,13 @@ function BoqTab({ data, setData, showToast, canEdit }) {
                   {filePreview.map((r, i) => {
                     const exists = data.suppliers.some((s) => s.name.toLowerCase() === r.supplierName.toLowerCase());
                     return (
-                      <tr key={i} className="border-t border-[#F1F2F4]">
+                      <tr key={i} className="border-t border-[#F1F2F4]" title={[r.detail, r.specs, r.brand && `Nhãn hiệu: ${r.brand}`, r.origin && `Xuất xứ: ${r.origin}`, r.note].filter(Boolean).join(" · ")}>
                         <td className="px-3 py-2 text-[#8A8F98]">{r.code}</td>
                         <td className="px-3 py-2 font-medium">{r.desc}</td>
                         <td className="px-3 py-2 text-[#5B6169]">{r.model}</td>
                         <td className="px-3 py-2 text-center">{r.unit}</td>
                         <td className="px-3 py-2 text-right">{r.qty.toLocaleString("vi-VN")}</td>
+                        <td className="px-3 py-2 text-right">{r.unitPrice ? r.unitPrice.toLocaleString("vi-VN") : "—"}</td>
                         <td className="px-3 py-2">
                           {r.supplierName ? (
                             exists ? r.supplierName : <Badge level="amber">{r.supplierName} (mới)</Badge>
@@ -910,9 +1002,10 @@ function BoqTab({ data, setData, showToast, canEdit }) {
                 </tbody>
               </table>
             </div>
+            <div className="text-[11px] text-[#8A8F98] mt-1.5">Di chuột vào từng dòng để xem Mô tả chi tiết / Thông số kỹ thuật / Nhãn hiệu / Xuất xứ / Ghi chú đã đọc được.</div>
             <div className="mt-3 flex gap-2">
-              <Btn onClick={commitFileImport} variant="success" disabled={!canEdit}><CheckCircle2 size={14} /> Nạp {filePreview.length} dòng vào BoQ</Btn>
-              <Btn onClick={() => { setFilePreview([]); setFileName(""); }} variant="ghost">Huỷ</Btn>
+              <Btn onClick={() => commitFileImport(true)} variant="success" disabled={!canEdit}><CheckCircle2 size={14} /> Nạp {filePreview.length} dòng vào BoQ</Btn>
+              <Btn onClick={() => { setFilePreview([]); setFileName(""); setDetectedMeta(null); }} variant="ghost">Huỷ</Btn>
             </div>
           </div>
         )}
@@ -929,23 +1022,25 @@ function BoqTab({ data, setData, showToast, canEdit }) {
                 <th className="text-left px-3 py-2 font-medium">Model</th>
                 <th className="text-left px-3 py-2 font-medium">ĐVT</th>
                 <th className="text-right px-3 py-2 font-medium">KL BoQ</th>
+                <th className="text-right px-3 py-2 font-medium">Đơn giá</th>
                 <th className="text-left px-3 py-2 font-medium">NCC</th>
                 <th className="px-3 py-2"></th>
               </tr>
             </thead>
             <tbody>
               {data.boqItems.map((it) => (
-                <tr key={it.id} className="border-t border-[#F1F2F4] hover:bg-[#FAFBFC]">
+                <tr key={it.id} className="border-t border-[#F1F2F4] hover:bg-[#FAFBFC]" title={[it.detail, it.specs, it.brand && `Nhãn hiệu: ${it.brand}`, it.origin && `Xuất xứ: ${it.origin}`, it.note].filter(Boolean).join(" · ")}>
                   <td className="px-3 py-2 text-[#8A8F98]">{it.code}</td>
                   <td className="px-3 py-2 font-medium">{it.desc}</td>
                   <td className="px-3 py-2 text-[#5B6169]">{it.model}</td>
                   <td className="px-3 py-2">{it.unit}</td>
                   <td className="px-3 py-2 text-right">{it.qty.toLocaleString("vi-VN")}</td>
+                  <td className="px-3 py-2 text-right">{it.unitPrice ? it.unitPrice.toLocaleString("vi-VN") : "—"}</td>
                   <td className="px-3 py-2 text-[#5B6169]">{data.suppliers.find((s) => s.id === it.supplierId)?.name || "—"}</td>
                   <td className="px-3 py-2 text-right">{canEdit && <button onClick={() => removeItem(it.id)} className="text-[#C0392B] hover:bg-[#FDECEC] p-1 rounded"><Trash2 size={13} /></button>}</td>
                 </tr>
               ))}
-              {data.boqItems.length === 0 && <tr><td colSpan={7} className="text-center py-6 text-[#8A8F98]">Chưa có đầu mục BoQ</td></tr>}
+              {data.boqItems.length === 0 && <tr><td colSpan={8} className="text-center py-6 text-[#8A8F98]">Chưa có đầu mục BoQ</td></tr>}
             </tbody>
           </table>
         </div>
