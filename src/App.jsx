@@ -1748,12 +1748,12 @@ function NccTab({ data, setData, statusByItem, showToast, canEdit, onPrint, proj
                 {data.suppliers.map((s) => {
                   const items = data.boqItems.filter((b) => b.supplierId === s.id);
                   const expanded = expandedId === s.id;
-                  const hasDetail = s.taxCode || s.representative || s.phone || s.email || s.contractNo || s.advancePercent || s.paymentPercent || s.warrantyPeriod || s.note;
+                  const hasDetail = true;
                   return (
                     <React.Fragment key={s.id}>
-                      <tr className="border-t border-[#F1F2F4] hover:bg-[#FAFBFC] cursor-pointer" onClick={() => hasDetail && setExpandedId(expanded ? null : s.id)}>
+                      <tr className="border-t border-[#F1F2F4] hover:bg-[#FAFBFC] cursor-pointer" onClick={() => setExpandedId(expanded ? null : s.id)}>
                         <td className="px-3 py-2 font-medium flex items-center gap-1.5">
-                          {hasDetail && <ChevronDown size={13} className={`text-[#8A8F98] transition-transform ${expanded ? "rotate-180" : ""}`} />}
+                          <ChevronDown size={13} className={`text-[#8A8F98] transition-transform ${expanded ? "rotate-180" : ""}`} />
                           {s.name}
                           {s.shortName && <span className="text-[#8A8F98] font-normal">({s.shortName})</span>}
                         </td>
@@ -1765,21 +1765,24 @@ function NccTab({ data, setData, statusByItem, showToast, canEdit, onPrint, proj
                       {expanded && (
                         <tr className="bg-[#FAFBFC] border-t border-[#F1F2F4]">
                           <td colSpan={5} className="px-3 py-3">
-                            <div className="grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-2 text-[12px]">
-                              {s.objectCode && <div><span className="text-[#8A8F98]">Mã đối tượng:</span> {s.objectCode}</div>}
-                              {s.taxCode && <div><span className="text-[#8A8F98]">MST:</span> {s.taxCode}</div>}
-                              {s.representative && <div><span className="text-[#8A8F98]">Người đại diện:</span> {s.representative}</div>}
-                              {s.phone && <div><span className="text-[#8A8F98]">SĐT:</span> {s.phone}</div>}
-                              {s.email && <div><span className="text-[#8A8F98]">Email:</span> {s.email}</div>}
-                              {s.contractNo && <div><span className="text-[#8A8F98]">Hợp đồng:</span> {s.contractNo}</div>}
-                              {s.advancePercent && <div><span className="text-[#8A8F98]">% Tạm ứng:</span> {s.advancePercent}</div>}
-                              {s.advanceDeadline && <div><span className="text-[#8A8F98]">Thời hạn tạm ứng:</span> {s.advanceDeadline}</div>}
-                              {s.paymentPercent && <div><span className="text-[#8A8F98]">% Thanh toán:</span> {s.paymentPercent}</div>}
-                              {s.paymentTermDays && <div><span className="text-[#8A8F98]">Thời hạn thanh toán:</span> {s.paymentTermDays} ngày</div>}
-                              {s.settlementDeadline && <div><span className="text-[#8A8F98]">Thời hạn quyết toán:</span> {s.settlementDeadline}</div>}
-                              {s.warrantyPeriod && <div><span className="text-[#8A8F98]">Bảo hành:</span> {s.warrantyPeriod}</div>}
-                              {s.note && <div className="col-span-2 md:col-span-4"><span className="text-[#8A8F98]">Ghi chú:</span> {s.note}</div>}
-                            </div>
+                            {(s.objectCode || s.taxCode || s.representative || s.phone || s.email || s.contractNo || s.advancePercent || s.paymentPercent || s.warrantyPeriod || s.note) && (
+                              <div className="grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-2 text-[12px] mb-4 pb-4 border-b border-[#E4E6EA]">
+                                {s.objectCode && <div><span className="text-[#8A8F98]">Mã đối tượng:</span> {s.objectCode}</div>}
+                                {s.taxCode && <div><span className="text-[#8A8F98]">MST:</span> {s.taxCode}</div>}
+                                {s.representative && <div><span className="text-[#8A8F98]">Người đại diện:</span> {s.representative}</div>}
+                                {s.phone && <div><span className="text-[#8A8F98]">SĐT:</span> {s.phone}</div>}
+                                {s.email && <div><span className="text-[#8A8F98]">Email:</span> {s.email}</div>}
+                                {s.contractNo && <div><span className="text-[#8A8F98]">Hợp đồng:</span> {s.contractNo}</div>}
+                                {s.advancePercent && <div><span className="text-[#8A8F98]">% Tạm ứng:</span> {s.advancePercent}</div>}
+                                {s.advanceDeadline && <div><span className="text-[#8A8F98]">Thời hạn tạm ứng:</span> {s.advanceDeadline}</div>}
+                                {s.paymentPercent && <div><span className="text-[#8A8F98]">% Thanh toán:</span> {s.paymentPercent}</div>}
+                                {s.paymentTermDays && <div><span className="text-[#8A8F98]">Thời hạn thanh toán:</span> {s.paymentTermDays} ngày</div>}
+                                {s.settlementDeadline && <div><span className="text-[#8A8F98]">Thời hạn quyết toán:</span> {s.settlementDeadline}</div>}
+                                {s.warrantyPeriod && <div><span className="text-[#8A8F98]">Bảo hành:</span> {s.warrantyPeriod}</div>}
+                                {s.note && <div className="col-span-2 md:col-span-4"><span className="text-[#8A8F98]">Ghi chú:</span> {s.note}</div>}
+                              </div>
+                            )}
+                            <SupplierBoqSection supplierId={s.id} supplierName={s.name} data={data} setData={setData} canEdit={canEdit} showToast={showToast} />
                           </td>
                         </tr>
                       )}
@@ -1927,6 +1930,185 @@ function InvoiceReconcile({ data, setData, statusByItem, showToast, canEdit, onP
         {data.invoices.filter((i) => !supplierId || i.supplierId === supplierId).length === 0 && (
           <div className="text-center py-6 text-[#8A8F98] text-[13px] bg-white rounded-xl border border-[#E4E6EA]">Chưa có hoá đơn nào được đối chiếu</div>
         )}
+      </div>
+    </div>
+  );
+}
+
+/* ---------- BoQ riêng theo từng nhà cung cấp (trong phần mở rộng của NccTab) ---------- */
+function SupplierBoqSection({ supplierId, supplierName, data, setData, canEdit, showToast }) {
+  const [form, setForm] = useState({ code: "", desc: "", model: "", unit: "m", qty: "", category: "" });
+  const [filePreview, setFilePreview] = useState([]);
+  const [fileName, setFileName] = useState("");
+  const [fileParsing, setFileParsing] = useState(false);
+  const fileInputRef = useRef(null);
+
+  const items = data.boqItems.filter((b) => b.supplierId === supplierId);
+
+  const addItem = () => {
+    if (!form.desc || !form.qty) { showToast("Cần nhập mô tả và khối lượng", "err"); return; }
+    const item = { id: uid(), code: form.code, desc: form.desc, model: form.model || form.desc, unit: form.unit, qty: Number(form.qty), supplierId, category: form.category };
+    setData({ ...data, boqItems: [...data.boqItems, item] });
+    setForm({ code: "", desc: "", model: "", unit: "m", qty: "", category: "" });
+    showToast(`Đã thêm đầu mục BoQ cho ${supplierName}`);
+  };
+
+  const removeItem = (id) => setData({ ...data, boqItems: data.boqItems.filter((i) => i.id !== id) });
+
+  const SB_HEADER_ALIASES = {
+    code: ["ma", "so tt", "stt", "ma so", "ma vat tu"],
+    desc: ["mo ta", "mo ta boq", "ten vat tu", "san pham", "ten hang", "mo ta vat tu", "ten"],
+    detail: ["mo ta chi tiet san pham", "mo ta chi tiet", "chi tiet san pham"],
+    unit: ["dvt", "don vi", "don vi tinh"],
+    qty: ["kl boq", "khoi luong", "so luong", "kl", "khoi luong boq"],
+    specs: ["thong so ky thuat", "thong so"],
+    model: ["model", "quy cach ma hieu", "quy cach", "ma hieu"],
+    brand: ["nhan hieu"],
+    origin: ["xuat xu"],
+    unitPrice: ["don gia"],
+    totalPrice: ["thanh tien"],
+    note: ["ghi chu"],
+    category: ["nhom vat tu", "loai vat tu", "category", "nhom"],
+  };
+  const NUMERIC_FIELDS = new Set(["qty", "unitPrice", "totalPrice"]);
+
+  const downloadTemplate = async (e) => {
+    e.stopPropagation();
+    const XLSX = await import("xlsx");
+    const headers = ["STT", "Mô tả BOQ", "Mô Tả Chi Tiết Sản Phẩm", "Đơn vị", "Khối lượng", "Thông số kỹ thuật", "QUY CÁCH/ MÃ HIỆU", "NHÃN HIỆU", "XUẤT XỨ", "Đơn giá", "Thành tiền", "Ghi chú", "Nhóm vật tư"];
+    const aoa = [
+      [`Nhà cung cấp: ${supplierName}`],
+      [],
+      headers,
+      ["I", "Ống nhựa PPR DN20 PN16", "Ống nhựa PPR, mối nối hàn nhiệt", "m", 7570, "PN16", "PPR-DN20", "Đại Thành", "Việt Nam", 25000, "", "", "PPR"],
+    ];
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    ws["!cols"] = headers.map(() => ({ wch: 18 }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "BoQ");
+    XLSX.writeFile(wb, `Mau_BoQ_${supplierName.replace(/[^\w]+/g, "_").slice(0, 30)}.xlsx`);
+  };
+
+  const handleFile = async (e) => {
+    e.stopPropagation();
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setFileParsing(true);
+    setFileName(file.name);
+    try {
+      const XLSX = await import("xlsx");
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(buf, { type: "array" });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
+
+      const { headerRowIdx, score } = detectHeaderRow(aoa, SB_HEADER_ALIASES);
+      if (score < 2) {
+        showToast("Không tìm thấy dòng tiêu đề phù hợp trong file", "err");
+        setFileParsing(false); e.target.value = ""; return;
+      }
+      const colFieldMap = buildColFieldMap(aoa[headerRowIdx], SB_HEADER_ALIASES);
+      const mapped = [];
+      for (let r = headerRowIdx + 1; r < aoa.length; r++) {
+        const row = aoa[r];
+        if (!row || row.every((c) => String(c ?? "").trim() === "")) continue;
+        const out = { code: "", desc: "", detail: "", model: "", unit: "m", qty: 0, specs: "", brand: "", origin: "", unitPrice: 0, totalPrice: 0, note: "", category: "" };
+        row.forEach((cell, idx) => {
+          const field = colFieldMap[idx];
+          if (!field) return;
+          if (NUMERIC_FIELDS.has(field)) out[field] = Number(String(cell).replace(/[^0-9.-]/g, "")) || 0;
+          else out[field] = String(cell ?? "").trim();
+        });
+        if (!out.model) out.model = out.desc;
+        if (out.desc && out.qty) mapped.push(out);
+      }
+      if (!mapped.length) showToast("Không đọc được dòng nào — kiểm tra cột Mô tả và Khối lượng", "err");
+      setFilePreview(mapped);
+    } catch {
+      showToast("Không đọc được file — hãy chắc chắn đây là file .xlsx", "err");
+      setFilePreview([]);
+    } finally {
+      setFileParsing(false);
+      e.target.value = "";
+    }
+  };
+
+  const commitFileImport = (e) => {
+    e.stopPropagation();
+    if (!filePreview.length) return;
+    const newItems = filePreview.map((r) => ({ id: uid(), ...r, supplierId }));
+    setData({ ...data, boqItems: [...data.boqItems, ...newItems] });
+    showToast(`Đã nạp ${newItems.length} đầu mục BoQ cho ${supplierName}`);
+    setFilePreview([]); setFileName("");
+  };
+
+  return (
+    <div onClick={(e) => e.stopPropagation()}>
+      <div className="text-[12.5px] font-semibold mb-2">BoQ của {supplierName} ({items.length})</div>
+
+      <div className="grid grid-cols-2 md:grid-cols-6 gap-2 mb-2">
+        <input className={inputCls} placeholder="Mã" value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} disabled={!canEdit} />
+        <input className={`${inputCls} md:col-span-2`} placeholder="Mô tả *" value={form.desc} onChange={(e) => setForm({ ...form, desc: e.target.value })} disabled={!canEdit} />
+        <input className={inputCls} placeholder="ĐVT" value={form.unit} onChange={(e) => setForm({ ...form, unit: e.target.value })} disabled={!canEdit} />
+        <input type="number" className={inputCls} placeholder="KL BoQ *" value={form.qty} onChange={(e) => setForm({ ...form, qty: e.target.value })} disabled={!canEdit} />
+        <Btn size="sm" onClick={addItem} disabled={!canEdit}><Plus size={13} /> Thêm</Btn>
+      </div>
+
+      <div className="flex flex-wrap gap-2 mb-3">
+        <Btn size="sm" variant="outline" onClick={downloadTemplate}><Download size={13} /> Tải file mẫu Excel</Btn>
+        <Btn size="sm" variant="outline" onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click(); }} disabled={!canEdit || fileParsing}>
+          <Upload size={13} /> {fileParsing ? "Đang đọc file…" : "Chọn file Excel để nạp"}
+        </Btn>
+        <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleFile} />
+      </div>
+
+      {filePreview.length > 0 && (
+        <div className="mb-3 border border-[#E4E6EA] rounded-lg overflow-hidden">
+          <div className="overflow-auto max-h-[240px]">
+            <table className="w-full text-[12px]">
+              <thead className="bg-[#F8F9FB] text-[#5B6169] sticky top-0">
+                <tr><th className="text-left px-2 py-1.5 font-medium">Mã</th><th className="text-left px-2 py-1.5 font-medium">Mô tả</th><th className="text-center px-2 py-1.5 font-medium">ĐVT</th><th className="text-right px-2 py-1.5 font-medium">KL</th><th className="text-right px-2 py-1.5 font-medium">Đơn giá</th></tr>
+              </thead>
+              <tbody>
+                {filePreview.map((r, i) => (
+                  <tr key={i} className="border-t border-[#F1F2F4]">
+                    <td className="px-2 py-1.5 text-[#8A8F98]">{r.code}</td>
+                    <td className="px-2 py-1.5">{r.desc}</td>
+                    <td className="px-2 py-1.5 text-center">{r.unit}</td>
+                    <td className="px-2 py-1.5 text-right">{r.qty.toLocaleString("vi-VN")}</td>
+                    <td className="px-2 py-1.5 text-right">{r.unitPrice ? r.unitPrice.toLocaleString("vi-VN") : "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="p-2 border-t border-[#E4E6EA] flex gap-2">
+            <Btn size="sm" variant="success" onClick={commitFileImport} disabled={!canEdit}><CheckCircle2 size={12} /> Nạp {filePreview.length} dòng</Btn>
+            <Btn size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setFilePreview([]); setFileName(""); }}>Huỷ</Btn>
+          </div>
+        </div>
+      )}
+
+      <div className="border border-[#E4E6EA] rounded-lg overflow-auto max-h-[260px]">
+        <table className="w-full text-[12px]">
+          <thead className="bg-[#F8F9FB] text-[#5B6169] sticky top-0">
+            <tr><th className="text-left px-2 py-1.5 font-medium">Mã</th><th className="text-left px-2 py-1.5 font-medium">Mô tả</th><th className="text-left px-2 py-1.5 font-medium">Model</th><th className="text-center px-2 py-1.5 font-medium">ĐVT</th><th className="text-right px-2 py-1.5 font-medium">KL BoQ</th><th className="text-right px-2 py-1.5 font-medium">Đơn giá</th><th></th></tr>
+          </thead>
+          <tbody>
+            {items.map((it) => (
+              <tr key={it.id} className="border-t border-[#F1F2F4]">
+                <td className="px-2 py-1.5 text-[#8A8F98]">{it.code}</td>
+                <td className="px-2 py-1.5 font-medium">{it.desc}</td>
+                <td className="px-2 py-1.5 text-[#5B6169]">{it.model}</td>
+                <td className="px-2 py-1.5 text-center">{it.unit}</td>
+                <td className="px-2 py-1.5 text-right">{it.qty.toLocaleString("vi-VN")}</td>
+                <td className="px-2 py-1.5 text-right">{it.unitPrice ? it.unitPrice.toLocaleString("vi-VN") : "—"}</td>
+                <td className="px-2 py-1.5 text-right">{canEdit && <button onClick={(e) => { e.stopPropagation(); removeItem(it.id); }} className="text-[#C0392B] hover:bg-[#FDECEC] p-1 rounded"><Trash2 size={12} /></button>}</td>
+              </tr>
+            ))}
+            {items.length === 0 && <tr><td colSpan={7} className="text-center py-4 text-[#8A8F98]">Chưa có đầu mục BoQ nào cho NCC này</td></tr>}
+          </tbody>
+        </table>
       </div>
     </div>
   );
